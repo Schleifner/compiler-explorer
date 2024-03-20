@@ -55,7 +55,6 @@ export class TaskingCompiler extends BaseCompiler {
     constructor(info: CompilerInfo, env: CompilationEnvironment) {
         super(info, env);
         this.asm = new AsmParserTasking(this.compilerProps);
-        // this.compiler.exe = this.compiler.exe.replace(/c[cp]tc\.exe/, 'hldumptc.exe');
         this.compileOptions = ['-g', '--core=tc1.8', '-c', '-O0'];
         if (info.lang === 'c++') {
             this.compileOptions.push('--force-c++', '--pending-instantiations=200');
