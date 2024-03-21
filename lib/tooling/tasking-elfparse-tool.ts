@@ -117,8 +117,8 @@ class Elf32Section {
             }
         }
         const mask = 1 << (bitsWritten - 1);
-        if (signedInt && (result & mask)) {
-            result = - (result & (mask - 1) ^ (mask - 1)) - 1
+        if (signedInt && result & mask) {
+            result = -((result & (mask - 1)) ^ (mask - 1)) - 1;
         }
         return result;
     }
