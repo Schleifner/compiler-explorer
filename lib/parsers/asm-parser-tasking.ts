@@ -38,7 +38,7 @@ class AsmTextSection {
         while (lineno < this.lines.length) {
             const line = this.lines[lineno];
             for (const debugLine of debugLineSec.decodedLines) {
-                if (debugLine.opaddr + offset === line.address) {
+                if (line.address !== undefined && debugLine.opaddr + offset <= line.address) {
                     line.source = {
                         file: debugLine.filename === source ? '' : debugLine.filename,
                         mainsource: debugLine.filename === source,
@@ -110,11 +110,11 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
                 continue;
             } else if ((match = line.match(this.sectionRe))) {
                 isSectFromSource = this.isSectionFromSourceFile(match.groups.sect);
-                if (isSectFromSource) {
+                if (isSectFromSource || filters.libraryCode) {
                     textSecs.push(new AsmTextSection(match.groups.sect));
                 }
             } else if ((match = line.match(this.asmRe))) {
-                if (!isSectFromSource) continue;
+                if (!isSectFromSource && !filters.libraryCode) continue;
                 const textSec = textSecs[textSecs.length - 1];
                 if (filters.binary && filters.binaryObject) {
                     textSec.addAsm(match.groups.addr, '', match.groups.opcode);
