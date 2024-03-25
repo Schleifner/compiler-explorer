@@ -71,6 +71,9 @@ export class TaskingCompiler extends BaseCompiler {
 
     override processExecutionResult(input: UnprocessedExecResult, inputFilename?: string): BasicExecutionResult {
         const start = performance.now();
+        if (inputFilename) {
+            this.asm.setSource(inputFilename);
+        }
         const stdout = parseOutput(input.stdout, inputFilename);
         const stderr = parseOutput(input.stderr, inputFilename);
         const end = performance.now();

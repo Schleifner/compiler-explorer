@@ -173,6 +173,33 @@ class Elf32Section {
     }
 }
 
+class Elf32SymbolTableSection {
+    symbolTable: Array<string>;
+    constructor() {
+        this.symbolTable = [];
+    }
+
+    loadStringFromStrTab(offset: number, strtab: Elf32Section) {
+        let str = '';
+        while (strtab.content[offset] !== 0) {
+            str += String.fromCodePoint(strtab.content[offset]);
+            offset++;
+        }
+        return str;
+    }
+
+    parse(symtabSec: Elf32Section, strtab: Elf32Section) {
+        let offset = 0;
+        while (offset < symtabSec.size) {
+            const st_name = symtabSec.content.readUInt32LE(offset);
+            strtab.seek(st_name);
+            const name = strtab.readString();
+            offset += 16;
+            this.symbolTable.push(name);
+        }
+    }
+}
+
 export class Elf32DebugLineSection {
     unit_length: number;
     version: number;
@@ -351,44 +378,20 @@ export class Elf32DebugLineSection {
     }
 
     relocation(sec: Elf32Section, symtab: Elf32SymbolTableSection) {
-        const relaSec = new Elf32RelocationSection();
+        const relaSec = new Elf32RelocationSection(sec.name);
         relaSec.parse(sec, symtab);
-        this.relaSection = relaSec.relocation_info[0]['symbol'];
-        this.relaOffset = relaSec.relocation_info[0]['addedend'];
+        this.relaSection = relaSec.relocationInfo[0]['symbol'];
+        this.relaOffset = relaSec.relocationInfo[0]['addedend'];
     }
 }
 
-class Elf32SymbolTableSection {
-    symbolTable: Array<string>;
-    constructor() {
-        this.symbolTable = [];
-    }
-
-    loadStringFromStrTab(offset: number, strtab: Elf32Section) {
-        let str = '';
-        while (strtab.content[offset] !== 0) {
-            str += String.fromCodePoint(strtab.content[offset]);
-            offset++;
-        }
-        return str;
-    }
-
-    parse(symtabSec: Elf32Section, strtab: Elf32Section) {
-        let offset = 0;
-        while (offset < symtabSec.size) {
-            const st_name = symtabSec.content.readUInt32LE(offset);
-            strtab.seek(st_name);
-            const name = strtab.readString();
-            offset += 16;
-            this.symbolTable.push(name);
-        }
-    }
-}
-
-class Elf32RelocationSection {
-    relocation_info: Array<any>;
-    constructor() {
-        this.relocation_info = [];
+export class Elf32RelocationSection {
+    relocationInfo: Array<any>;
+    correspondingSecion: string;
+    section: string;
+    constructor(sec: string) {
+        this.section = sec;
+        this.relocationInfo = [];
     }
 
     parse(sec: Elf32Section, symtab: Elf32SymbolTableSection) {
@@ -398,7 +401,7 @@ class Elf32RelocationSection {
             const r_info = sec.readFixed32(true, false);
             const r_addend = sec.readFixed32(true, false);
             const symbol = symtab.symbolTable[r_info >> 8];
-            this.relocation_info.push({
+            this.relocationInfo.push({
                 offset: r_offset,
                 symbol: symbol,
                 addedend: r_addend,
@@ -467,7 +470,7 @@ export class Elf32Parser {
         }
         for (const sec of this.sections) {
             if (sec.name.startsWith('.rela.text')) {
-                const rela = new Elf32RelocationSection();
+                const rela = new Elf32RelocationSection(sec.name);
                 rela.parse(sec, this.symtab);
                 this.textRelaSecs.push(rela);
             }

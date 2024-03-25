@@ -1,3 +1,5 @@
+import path from 'path';
+
 import {
     AsmResultLabel,
     AsmResultSource,
@@ -6,12 +8,11 @@ import {
 } from '../../types/asmresult/asmresult.interfaces';
 import {ParseFiltersAndOutputOptions} from '../../types/features/filters.interfaces';
 import {PropertyGetter} from '../properties.interfaces';
-import {Elf32DebugLineSection, Elf32Parser} from '../tooling/tasking-elfparse-tool';
+import {Elf32DebugLineSection, Elf32Parser, Elf32RelocationSection} from '../tooling/tasking-elfparse-tool';
 import * as utils from '../utils';
 
 import {AsmParser} from './asm-parser';
 import {IAsmParser} from './asm-parser.interfaces';
-import {AsmRegex} from './asmregex';
 
 class AsmTextSection {
     section: string;
@@ -31,7 +32,7 @@ class AsmTextSection {
         this.lines.push(line);
     }
 
-    attachDebugLine(debugLineSec: Elf32DebugLineSection) {
+    attachDebugLine(debugLineSec: Elf32DebugLineSection, source: string) {
         const offset = debugLineSec.relaOffset;
         let lineno = 0;
         while (lineno < this.lines.length) {
@@ -39,8 +40,8 @@ class AsmTextSection {
             for (const debugLine of debugLineSec.decodedLines) {
                 if (debugLine.opaddr + offset === line.address) {
                     line.source = {
-                        file: '',
-                        mainsource: true,
+                        file: debugLine.filename === source ? '' : debugLine.filename,
+                        mainsource: debugLine.filename === source,
                         line: debugLine.line,
                     };
                 }
@@ -53,13 +54,34 @@ class AsmTextSection {
 export class AsmParserTasking extends AsmParser implements IAsmParser {
     sectionRe: RegExp;
     asmRe: RegExp;
-    _elffilepath: string;
-    testcpppath: string;
+    sourceFile: string;
 
     constructor(compilerProps?: PropertyGetter) {
         super(compilerProps);
         this.sectionRe = /^\s*.sect\s+'(?<sect>.+)'/;
         this.asmRe = /(?<addr>[\da-f]{8})\s+(?<code>(?:[\da-f]{2}\s){1,4})\s+(?:\S*:)*\s*(?<opcode>.+)/;
+    }
+
+    setSource(source: string) {
+        this.sourceFile = source;
+    }
+
+    isSectionFromSourceFile(sect: string) {
+        const section = '.text.' + path.parse(this.sourceFile).name;
+        return sect.startsWith(section);
+    }
+
+    demangle(text: AsmTextSection, rela: Elf32RelocationSection) {
+        for (const rel of rela.relocationInfo) {
+            for (const l of text.lines) {
+                if (l.address === rel.offset) {
+                    const operands = l.text.match(/([\w.]+)(\s+)(.+)/);
+                    if (operands && (operands[1] === 'call' || operands[1] === 'j')) {
+                        l.text = `${operands[1]}${operands[2]}<${rel.symbol}+0x${rel.addedend.toString(16)}>`;
+                    }
+                }
+            }
+        }
     }
 
     override processAsm(asmResult: string, filters: ParseFiltersAndOutputOptions): ParsedAsmResult {
@@ -82,12 +104,17 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
         const textSecs: Array<AsmTextSection> = [];
         let asm: ParsedAsmResultLine[] = [];
         let match;
+        let isSectFromSource;
         for (const line of asmLines) {
             if (line.length === 0) {
                 continue;
             } else if ((match = line.match(this.sectionRe))) {
-                textSecs.push(new AsmTextSection(match.groups.sect));
+                isSectFromSource = this.isSectionFromSourceFile(match.groups.sect);
+                if (isSectFromSource) {
+                    textSecs.push(new AsmTextSection(match.groups.sect));
+                }
             } else if ((match = line.match(this.asmRe))) {
+                if (!isSectFromSource) continue;
                 const textSec = textSecs[textSecs.length - 1];
                 if (filters.binary && filters.binaryObject) {
                     textSec.addAsm(match.groups.addr, '', match.groups.opcode);
@@ -100,7 +127,12 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
         for (const sec of textSecs) {
             for (const debugLineSec of elfParser.debugLines) {
                 if (debugLineSec.relaSection === sec.section) {
-                    sec.attachDebugLine(debugLineSec);
+                    sec.attachDebugLine(debugLineSec, this.sourceFile);
+                }
+            }
+            for (const textRelaSec of elfParser.textRelaSecs) {
+                if (textRelaSec.section.endsWith(sec.section)) {
+                    this.demangle(sec, textRelaSec);
                 }
             }
         }
