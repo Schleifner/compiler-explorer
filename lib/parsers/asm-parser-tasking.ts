@@ -6,7 +6,7 @@ import {
 } from '../../types/asmresult/asmresult.interfaces';
 import {ParseFiltersAndOutputOptions} from '../../types/features/filters.interfaces';
 import {PropertyGetter} from '../properties.interfaces';
-import {elf_Parse} from '../tooling/tasking-elfparse-tool';
+import {ElfParserTool} from '../tooling/tasking-elfparse-tool';
 import * as utils from '../utils';
 
 import {AsmParser} from './asm-parser';
@@ -44,11 +44,11 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
         let filetext = '';
         let address = '';
 
-        const elfParseTool = new elf_Parse(this._elffilepath);
+        const elfParseTool = new ElfParserTool(this._elffilepath);
         if (this.testcpppath) {
             elfParseTool._elf_examplepathcpp = this.testcpppath;
         }
-        elfParseTool.start();
+        const elf = elfParseTool.start();
 
         for (let line of asmLines) {
             if (line.trim() === '') {
@@ -63,7 +63,7 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
             if (matchtext) {
                 if (matchtext[1] === '.sect') {
                     filetext = matchtext[2];
-                    if (elfParseTool._elf_debugLineSet.has(filetext) || filters.libraryCode) {
+                    if (elf.lineSet.has(filetext) || filters.libraryCode) {
                         asm.push({
                             text: filetext,
                         });
@@ -77,7 +77,7 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
                 address = matchaddr[1];
                 if (matchaddr[5].includes('call') || matchaddr[5].trim() === 'j') {
                     if (matchaddr[1] === '00000000') {
-                        const map = elfParseTool._elf_RelaMap.get(filetext);
+                        const map = elf.relaMap.get(filetext);
                         if (map) {
                             const value = map.get(0);
                             if (value) {
@@ -86,7 +86,7 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
                         }
                     } else {
                         const key = parseInt(matchaddr[6]);
-                        const map = elfParseTool._elf_RelaMap.get(filetext);
+                        const map = elf.relaMap.get(filetext);
                         if (map) {
                             const value = map.get(key);
                             if (value) {
@@ -104,7 +104,7 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
 
             const labelsInLine = match ? [] : this.getUsedLabelsInLine(text);
 
-            const map = elfParseTool._elf_debugLineMap.get(filetext);
+            const map = elf.lineMap.get(filetext);
             if (map) {
                 const _linenumber: number | undefined = map.get(address);
                 if (_linenumber) {
@@ -116,8 +116,8 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
                 }
             }
 
-            if (elfParseTool._elf_debugLineSet.has(filetext) || filters.libraryCode) {
-                if (elfParseTool._elf_debugLineSet.has(filetext)) {
+            if (elf.lineSet.has(filetext) || filters.libraryCode) {
+                if (elf.lineSet.has(filetext)) {
                     asm.push({
                         text: text,
                         source: source,
@@ -157,30 +157,18 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
             if (!lastBlank) asm.push({text: '', source: null, labels: []});
         }
 
-        const elfParseTool = new elf_Parse(this._elffilepath);
+        const elfParseTool = new ElfParserTool(this._elffilepath);
         if (this.testcpppath) {
             elfParseTool._elf_examplepathcpp = this.testcpppath;
         }
-        elfParseTool.start();
+        const elf = elfParseTool.start();
 
-        let cnt = 0;
-        for (const line of elfParseTool._elf_section) {
-            if (line.sh_strname === '.debug_line') {
-                elfParseTool._elf_section[cnt].sh_end =
-                    elfParseTool._elf_section[cnt].sh_offset + elfParseTool._elf_section[cnt].sh_size - 1;
-                elfParseTool.parse_debugLine(cnt, '');
-            }
-            cnt++;
-        }
+        let src = elfParseTool._elf_examplepathcpp;
+        if (!elf.lineMap.has(src)) { src = elfParseTool._elf_examplepathc }
+        let map = elf.lineMap.get(src);
 
-        let map = elfParseTool._elf_debugLineMap.get(elfParseTool._elf_examplepathcpp);
-
-        if (!map) {
-            map = elfParseTool._elf_debugLineMap.get(elfParseTool._elf_examplepathc);
-        }
-
-        let minaddress = '';
-        let maxaddress = '';
+        let minaddress = '00000000';
+        let maxaddress = 'ffffffff';
 
         if (map) {
             minaddress = '99999999';
@@ -230,7 +218,7 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
                     if (_linenumber) {
                         source = {
                             column: 1,
-                            file: null,
+                            file: src,
                             line: _linenumber,
                         };
                     }
