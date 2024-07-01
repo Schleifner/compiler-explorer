@@ -1,7 +1,10 @@
 import * as fs from 'fs';
 
-import {DwarfLineReader} from './dwarf-line-reader';
+import {DwarfLineReader, LineInfoItem} from './dwarf-line-reader';
 import {ElfReader} from './elf-reader';
+import { readFileAsync } from '@sentry/node/types/integrations/context';
+
+export {LineInfoItem} from './dwarf-line-reader';
 
 function pad(num_str: string) {
     const s = '00000000' + num_str;
@@ -23,10 +26,6 @@ export class ElfParser {
         this.elfContent = file_content;
     }
 
-    getLineSet(libraryCode: boolean) {
-        const lineMap = this.getLineMap(libraryCode);
-        return new Set<string>(lineMap.keys());
-    }
     getSrcPaths() {
         const paths: string[] = [];
         for (const file_info of this.lineReader.fileInfo()) {
@@ -35,7 +34,7 @@ export class ElfParser {
         return paths;
     }
 
-    getRelaMap(libraryCode: boolean) {
+    getRelaMap() {
         const relaMap = new Map<string, Map<number, string>>();
         const rels = this.elfReader.getRelaocations();
         for (const [key, array] of Object.entries(rels)) {
@@ -48,7 +47,7 @@ export class ElfParser {
         return relaMap;
     }
 
-    getLineMap(libraryCode: boolean) {
+    getLineMap(filter: (item: LineInfoItem) => boolean) {
         const lineMap = new Map<string, Map<string, number>>();
         const groups = this.elfReader.getGroups();
         for (const group of groups) {
@@ -64,6 +63,7 @@ export class ElfParser {
                 for (const content of contents) {
                     this.lineReader.readEntries(content);
                     for (const item of this.lineReader.lineInfo()) {
+                        if (!filter(item)) { continue ; }
                         const addr_start = BigInt.asUintN(32, item.address_start).toString(16);
                         const addr_end = BigInt.asUintN(32, item.address_start).toString(16);
                         record.set(pad(addr_start), item.line);
@@ -78,25 +78,6 @@ export class ElfParser {
                     this.lineReader.clearItems();
                 }
                 lineMap.set(text, record);
-            }
-        }
-        if (!libraryCode) {
-            const to_remove: string[] = [];
-            for (const text of lineMap.keys()) {
-                if (text.search(/\\ctc\\include\.c/g) > 0) {
-                    lineMap.delete(text);
-                    const index = text.search(/(?<=\\ctc\\include\.(c|cxx)\\)(.+)/g);
-                    if (index < 0) { continue ; }
-                    const name = '.text.' + text.substring(index);
-                    to_remove.push(name);
-                }
-            }
-            for (const head of to_remove) {
-                for (const text of lineMap.keys()) {
-                    if (text.startsWith(head)) {
-                        lineMap.delete(text)
-                    }
-                }
             }
         }
         return lineMap;

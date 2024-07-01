@@ -49,7 +49,7 @@ enum DW_LNE {
     DW_LNE_set_discriminator = 4,
 }
 
-export interface LineNumItem {
+export interface LineInfoItem {
     address_start: bigint;
     address_end: bigint;
     inc_dir: string;
@@ -89,7 +89,7 @@ export class DwarfLineReader {
         isa: 0,
         descreminator: 0,
     };
-    protected lineItemList: LineNumItem[] = [];
+    protected lineItemList: LineInfoItem[] = [];
     protected reader: BytesReader = new BytesReader();
     protected entries: {data: Uint8Array; size: uWord}[] = [];
 
@@ -181,7 +181,7 @@ export class DwarfLineReader {
         const file_item = this.header.file_names[this.registers.file - 1];
         const inc_dir =
             this.header.include_dirs.length > 0 ? this.header.include_dirs[Number(file_item.inc_dir_index)] : '';
-        const item: LineNumItem = {
+        const item: LineInfoItem = {
             address_start: this.registers.address,
             address_end: this.registers.address + addr_adv,
             line: this.registers.line + line_inc,
