@@ -1,34 +1,30 @@
-import { 
-    uByte, sByte, uHalf, uWord,
-    Addr, uLeb128, ByteArray,
-    signedLeb128
-} from "./ElfType"
-import { BytesReader } from "./ByteReader";
-import { assert } from "console";
+import {assert} from 'console';
 
+import {BytesReader} from './byte-reader';
+import {Addr, ByteArray, sByte, uByte, uHalf, uLeb128, uWord} from './elf-types';
 
 export interface FileItem {
-    filename:       string;
-    include_dir:    string;
-    inc_dir_index:  uLeb128;
-    modified_time:  uLeb128;
-    file_length:    uLeb128;
+    filename: string;
+    include_dir: string;
+    inc_dir_index: uLeb128;
+    modified_time: uLeb128;
+    file_length: uLeb128;
 }
 
 interface LineNumProgHeader {
-    unit_len:       uWord;
-    version:        uHalf;
-    header_len:     uWord;
-    min_inst_len:   uByte;
-    dft_is_stmt:    uByte;
-    line_base:      sByte;
-    line_range:     uByte;
-    opcode_base:    uByte;
-    std_op_lens:    ByteArray;
-    include_dirs:   Array<string>;
-    file_names:     Array<FileItem>;
-    op_begin:       number;
-    op_length:      number;
+    unit_len: uWord;
+    version: uHalf;
+    header_len: uWord;
+    min_inst_len: uByte;
+    dft_is_stmt: uByte;
+    line_base: sByte;
+    line_range: uByte;
+    opcode_base: uByte;
+    std_op_lens: ByteArray;
+    include_dirs: Array<string>;
+    file_names: Array<FileItem>;
+    op_begin: number;
+    op_length: number;
 }
 
 enum DW_LNS {
@@ -54,112 +50,116 @@ enum DW_LNE {
 }
 
 export interface LineNumItem {
-    address_start:      bigint;
-    address_end:        bigint;
-    inc_dir:           string;
-    filepath:          string;
-    line:               number;
-    column:             number;
+    address_start: bigint;
+    address_end: bigint;
+    inc_dir: string;
+    filepath: string;
+    line: number;
+    column: number;
 }
 
-const DEFAULT_IS_STMT: boolean = false;
+const DEFAULT_IS_STMT = false;
 
 interface LineRegisters {
-    address:            Addr;
-    file:               uWord;
-    line:               uWord;
-    column:             uWord;
-    is_stmt:            boolean;
-    basic_block:        boolean;
-    end_sequence:       boolean;
-    prologue_end:       boolean;
-    epilogue_begin:     boolean;
-    isa:                uWord;
-    descreminator:      uWord;
+    address: Addr;
+    file: uWord;
+    line: uWord;
+    column: uWord;
+    is_stmt: boolean;
+    basic_block: boolean;
+    end_sequence: boolean;
+    prologue_end: boolean;
+    epilogue_begin: boolean;
+    isa: uWord;
+    descreminator: uWord;
 }
 
 export class DwarfLineReader {
-    declare protected header: LineNumProgHeader;
+    protected declare header: LineNumProgHeader;
     protected registers: LineRegisters = {
-        address:        0n,
-        file:           1,
-        line:           1,
-        column:         0,
-        is_stmt:        DEFAULT_IS_STMT,
-        basic_block:    false,
-        end_sequence:   false,
-        prologue_end:   false,
+        address: 0n,
+        file: 1,
+        line: 1,
+        column: 0,
+        is_stmt: DEFAULT_IS_STMT,
+        basic_block: false,
+        end_sequence: false,
+        prologue_end: false,
         epilogue_begin: false,
-        isa:            0,
-        descreminator:  0
+        isa: 0,
+        descreminator: 0,
     };
     protected lineItemList: LineNumItem[] = [];
     protected reader: BytesReader = new BytesReader();
-    protected entries: {data: Uint8Array, size: uWord}[] = [];
+    protected entries: {data: Uint8Array; size: uWord}[] = [];
 
     readEntries(data: Uint8Array) {
         assert(data.length > 0);
         this.reader.bind(data);
-        while(!this.reader.isEnd()){
+        while (!this.reader.isEnd()) {
             const unit_len = this.reader.readWord();
             const entry_data = this.reader.read(unit_len);
             this.entries.push({data: entry_data, size: unit_len});
         }
-        for (var entry of this.entries) {
+        for (const entry of this.entries) {
             this.readEntry(entry);
         }
     }
 
-    protected readEntry(entry: {data: Uint8Array, size: uWord}) {
+    protected readEntry(entry: {data: Uint8Array; size: uWord}) {
         assert(entry.data.length > 0);
         this.reader.bind(entry.data);
         const lino_header: LineNumProgHeader = {
-            unit_len:       entry.size,
-            version:        this.reader.readHalf(),
-            header_len:     this.reader.readWord(),
-            min_inst_len:   this.reader.readByte(),
-            dft_is_stmt:    this.reader.readByte(),
-            line_base:      this.reader.readSByte(),
-            line_range:     this.reader.readByte(),
-            opcode_base:    this.reader.readByte(),
-            std_op_lens:    new Uint8Array(),
-            include_dirs:   new Array<string>(),
-            file_names:     new Array<FileItem>(),
-            op_begin:       0,
-            op_length:      0
+            unit_len: entry.size,
+            version: this.reader.readHalf(),
+            header_len: this.reader.readWord(),
+            min_inst_len: this.reader.readByte(),
+            dft_is_stmt: this.reader.readByte(),
+            line_base: this.reader.readSByte(),
+            line_range: this.reader.readByte(),
+            opcode_base: this.reader.readByte(),
+            std_op_lens: new Uint8Array(),
+            include_dirs: new Array<string>(),
+            file_names: new Array<FileItem>(),
+            op_begin: 0,
+            op_length: 0,
         };
         this.header = lino_header;
         const op_cnt_list = this.reader.read(lino_header.opcode_base - 1);
         lino_header.std_op_lens = op_cnt_list;
-        var path: string = this.reader.readString();
+        let path: string = this.reader.readString();
         while (path) {
             lino_header.include_dirs.push(path);
             path = this.reader.readString();
         }
-        var file_item: FileItem | null = this.readFileItem();
+        let file_item: FileItem | null = this.readFileItem();
         while (file_item) {
             lino_header.file_names.push(file_item);
             file_item = this.readFileItem();
         }
         lino_header.op_begin = lino_header.header_len + 4 + 2;
         lino_header.op_length = lino_header.unit_len - lino_header.op_begin;
-        if (lino_header.op_begin == 0) { return ; }
+        if (lino_header.op_begin === 0) {
+            return;
+        }
         this.execLineProgram();
     }
 
     protected readFileItem(): FileItem | null {
         const name = this.reader.readString();
-        if (!name) { return null; }
+        if (!name) {
+            return null;
+        }
         const idx = this.reader.readULeb128();
         const dirs = this.header.include_dirs;
-        const inc_dir = idx > dirs.length ? dirs[Number(idx)]: '';
+        const inc_dir = idx > dirs.length ? dirs[Number(idx)] : '';
         const file_item: FileItem = {
-            filename:       name,
-            include_dir:    inc_dir,
-            inc_dir_index:  idx,
-            modified_time:  this.reader.readULeb128(),
-            file_length:    this.reader.readULeb128(),
-        }
+            filename: name,
+            include_dir: inc_dir,
+            inc_dir_index: idx,
+            modified_time: this.reader.readULeb128(),
+            file_length: this.reader.readULeb128(),
+        };
         return file_item;
     }
 
@@ -179,23 +179,21 @@ export class DwarfLineReader {
 
     protected composeLineItem(addr_adv: bigint, line_inc: number) {
         const file_item = this.header.file_names[this.registers.file - 1];
-        const inc_dir = (this.header.include_dirs.length != 0)
-                       ? this.header.include_dirs[Number(file_item.inc_dir_index)]
-                       : '';
-        const item : LineNumItem = {
+        const inc_dir =
+            this.header.include_dirs.length > 0 ? this.header.include_dirs[Number(file_item.inc_dir_index)] : '';
+        const item: LineNumItem = {
             address_start: this.registers.address,
             address_end: this.registers.address + addr_adv,
             line: this.registers.line + line_inc,
             filepath: file_item.filename,
             inc_dir: inc_dir,
-            column: this.registers.column
+            column: this.registers.column,
         };
         this.lineItemList.push(item);
-
     }
 
     protected execExtOperation(inst_len: uByte, opcode: uByte) {
-        switch(opcode) {
+        switch (opcode) {
             case DW_LNE.DW_LNE_end_sequence: {
                 this.composeLineItem(0n, 0);
                 this.registers.end_sequence = true;
@@ -203,16 +201,15 @@ export class DwarfLineReader {
                 return 0;
             }
             case DW_LNE.DW_LNE_set_address: {
-                const operand = (inst_len == 4) 
-                              ? this.reader.readWord() 
-                              : this.reader.readWord(); // readLong
+                const operand = inst_len === 4 ? this.reader.readWord() : this.reader.readWord(); // readLong
                 this.registers.address = BigInt(operand);
                 return inst_len;
             }
             case DW_LNE.DW_LNE_define_file: {
                 const file = this.readFileItem();
-                assert(file != null);
-                this.header.file_names.push(file!);
+                if (file) {
+                    this.header.file_names.push(file);
+                }
                 return inst_len;
             }
             case DW_LNE.DW_LNE_set_discriminator: {
@@ -221,12 +218,12 @@ export class DwarfLineReader {
                 return inst_len;
             }
         }
-        throw new Error("it should not be reached.");
+        throw new Error('it should not be reached.');
     }
 
     protected execStdOperation(opcode: uByte) {
         // const operand_count = this.header.std_op_lens[opcode - 1];
-        switch(opcode) {
+        switch (opcode) {
             case DW_LNS.DW_LNS_copy: {
                 this.composeLineItem(0n, 0);
                 this.registers.basic_block = false;
@@ -283,14 +280,14 @@ export class DwarfLineReader {
                 return 1 + this.reader.readed_size();
             }
         }
-        throw new Error("it should not be reached.");
+        throw new Error('it should not be reached.');
     }
 
     protected execSpeOperation(opcode: uByte) {
         const adjust_opcode = opcode - this.header.opcode_base;
         const addr_advance = Math.floor(adjust_opcode / this.header.line_range) * this.header.min_inst_len;
         const line_increment = this.header.line_base + (adjust_opcode % this.header.line_range);
-        
+
         this.composeLineItem(BigInt(addr_advance), line_increment);
 
         this.registers.line += line_increment;
@@ -303,14 +300,16 @@ export class DwarfLineReader {
 
     protected execLineProgram() {
         this.reader.seek(this.header.op_begin);
-        for (var i = 0; i < this.header.op_length; ) {        
+        for (let i = 0; i < this.header.op_length; ) {
             const inst_header = this.reader.readByte();
-            if (inst_header == 0) {
-                var inst_len = this.reader.readByte();
+            if (inst_header === 0) {
+                let inst_len = this.reader.readByte();
                 const opcode = this.reader.readByte();
                 inst_len -= 1;
                 const len = this.execExtOperation(inst_len, opcode);
-                if (len <= 0) { break; } 
+                if (len <= 0) {
+                    break;
+                }
                 i += 1 + inst_len;
             } else if (inst_header < this.header.opcode_base) {
                 const opcode = inst_header;
@@ -321,7 +320,7 @@ export class DwarfLineReader {
             }
         }
     }
-    
+
     public clearItems() {
         this.lineItemList = [];
     }

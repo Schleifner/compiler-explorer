@@ -1,3 +1,3 @@
-export { ElfReader } from "./ElfReader"
-export { ElfParser } from "./ElfParser"
-export { DwarfLineReader, FileItem, LineNumItem } from "./DwarfReader"
+export {ElfReader} from './elf-reader';
+export {ElfParser} from './elf-parser';
+export {DwarfLineReader, FileItem, LineNumItem} from './dwarf-line-reader';

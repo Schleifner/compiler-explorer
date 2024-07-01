@@ -8,6 +8,7 @@ import {ParseFiltersAndOutputOptions} from '../../types/features/filters.interfa
 import {PropertyGetter} from '../properties.interfaces';
 import {ElfParserTool} from '../tooling/tasking-elfparse-tool';
 import * as utils from '../utils';
+import * as path from 'path';
 
 import {AsmParser} from './asm-parser';
 import {IAsmParser} from './asm-parser.interfaces';
@@ -44,10 +45,7 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
         let filetext = '';
         let address = '';
 
-        const elfParseTool = new ElfParserTool(this._elffilepath);
-        if (this.testcpppath) {
-            elfParseTool._elf_examplepathcpp = this.testcpppath;
-        }
+        const elfParseTool = new ElfParserTool(this._elffilepath, filters.libraryCode);
         const elf = elfParseTool.start();
 
         for (let line of asmLines) {
@@ -157,15 +155,19 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
             if (!lastBlank) asm.push({text: '', source: null, labels: []});
         }
 
-        const elfParseTool = new ElfParserTool(this._elffilepath);
+        const elfParseTool = new ElfParserTool(this._elffilepath, true);
         if (this.testcpppath) {
             elfParseTool._elf_examplepathcpp = this.testcpppath;
         }
         const elf = elfParseTool.start();
-
         let src = elfParseTool._elf_examplepathcpp;
-        if (!elf.lineMap.has(src)) { src = elfParseTool._elf_examplepathc }
-        let map = elf.lineMap.get(src);
+        if (!elf.lineMap.has(src)) {
+            src = elfParseTool._elf_examplepathc;
+        }
+        if (!elf.lineMap.has(src)) {
+            src = '';
+        }
+        const map = elf.lineMap.get(src);
 
         let minaddress = '00000000';
         let maxaddress = 'ffffffff';
@@ -218,7 +220,7 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
                     if (_linenumber) {
                         source = {
                             column: 1,
-                            file: src,
+                            file: null,
                             line: _linenumber,
                         };
                     }
