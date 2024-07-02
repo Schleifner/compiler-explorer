@@ -309,7 +309,7 @@ describe('Elf parse tooling', () => {
 // 00000006 82 00                         mov         d0,#0x0
 // 00000008 3c 04                         jg          0x10
 // 0000000a 8b 48 06 80                   add         d8,d8,#0x64
-// 0000000e c2 10        ___Z11printfhellov_function_end:add         d0,#0x1       
+// 0000000e c2 10        ___Z11printfhellov_function_end:add         d0,#0x1
 // 00000010 da 0a                         mov         d15,#0xa
 // 00000012 3f f0 fc 7f                   jlt         d0,d15,0xa
 // 00000016 6d 00 00 00                   call        0x16
@@ -346,7 +346,7 @@ describe('Elf parse tooling', () => {
 // 00000006 82 00                         mov         d0,#0x0
 // 00000008 3c 04                         jg          0x10
 // 0000000a 8b 48 06 80                   add         d8,d8,#0x64
-// 0000000e c2 10        ___Z11printfhellov_function_end:add         d0,#0x1       
+// 0000000e c2 10        ___Z11printfhellov_function_end:add         d0,#0x1
 // 00000010 da 0a                         mov         d15,#0xa
 // 00000012 3f f0 fc 7f                   jlt         d0,d15,0xa
 // 00000016 6d 00 00 00                   call        0x16
@@ -713,7 +713,7 @@ describe('Elf parse tooling', () => {
 // 00000006 82 00                         mov         d0,#0x0
 // 00000008 3c 04                         jg          0x10
 // 0000000a 8b 48 06 80                   add         d8,d8,#0x64
-// 0000000e c2 10        ___Z11printfhellov_function_end:add         d0,#0x1       
+// 0000000e c2 10        ___Z11printfhellov_function_end:add         d0,#0x1
 // 00000010 da 0a                         mov         d15,#0xa
 // 00000012 3f f0 fc 7f                   jlt         d0,d15,0xa
 // 00000016 6d 00 00 00                   call        0x16
@@ -750,7 +750,7 @@ describe('Elf parse tooling', () => {
 // 00000006 82 00                         mov         d0,#0x0
 // 00000008 3c 04                         jg          0x10
 // 0000000a 8b 48 06 80                   add         d8,d8,#0x64
-// 0000000e c2 10        ___Z11printfhellov_function_end:add         d0,#0x1       
+// 0000000e c2 10        ___Z11printfhellov_function_end:add         d0,#0x1
 // 00000010 da 0a                         mov         d15,#0xa
 // 00000012 3f f0 fc 7f                   jlt         d0,d15,0xa
 // 00000016 6d 00 00 00                   call        0x16

@@ -21,7 +21,7 @@ export class ElfParserTool {
         this.srcname = path.basename(basename);
         this._elf_examplepathc = basename + '.c';
         this._elf_examplepathcpp = basename + '.cpp';
-        if(fs.existsSync(this._elf_examplepathc)) {
+        if (fs.existsSync(this._elf_examplepathc)) {
             this.srcPath = this._elf_examplepathc;
         } else {
             this.srcPath = this._elf_examplepathcpp;
