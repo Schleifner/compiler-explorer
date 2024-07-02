@@ -18,7 +18,7 @@ export class ElfParserTool {
         }
         this.elfParser.bindFile(filepath);
         const basename = filepath.substring(0, filepath.search(/((\.c|\.cpp|\.cxx)\.o)$/g));
-        this.srcname = basename.substring(basename.lastIndexOf('\\') + 1);
+        this.srcname = path.basename(basename);
         this._elf_examplepathc = basename + '.c';
         this._elf_examplepathcpp = basename + '.cpp';
         fs.access(this._elf_examplepathc, fs.constants.F_OK, err => {
