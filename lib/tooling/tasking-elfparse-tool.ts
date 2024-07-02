@@ -8,6 +8,7 @@ export class ElfParserTool {
     protected declare elfParser: ElfParser;
     protected declare libraryCode: boolean;
     protected declare srcPath: string;
+    protected declare srcname: string;
 
     constructor(filepath: string, libraryCode: boolean) {
         this.elfParser = new ElfParser();
@@ -15,7 +16,8 @@ export class ElfParserTool {
             filepath = __dirname + '\\' + filepath;
         }
         this.elfParser.bindFile(filepath);
-        const basename = filepath.substring(0, filepath.lastIndexOf('.'));
+        const basename = filepath.substring(0, filepath.search(/((\.c|\.cpp|\.cxx)\.o)$/g));
+        this.srcname = basename.substring(basename.lastIndexOf('\\') + 1);
         this._elf_examplepathc = basename + '.c';
         this._elf_examplepathcpp = basename + '.cpp';
         fs.access(this._elf_examplepathc, fs.constants.F_OK, (err) => {
@@ -28,16 +30,19 @@ export class ElfParserTool {
         this.libraryCode = libraryCode;
     }
 
+    setSrcPath(path: string) {
+        this.srcPath = path;
+    }
+
     start() {
-        
-        const srcPath = this._elf_examplepathcpp;
+        const srcPath = this.srcPath;
         const lineMap = this.elfParser.getLineMap((item: LineInfoItem) => {
             return item.filepath === srcPath;
         });
         const relaMap = this.elfParser.getRelaMap();
         if (!this.libraryCode) {
             for (const text of lineMap.keys()) {
-                if (!text.startsWith('.text.example') && text != srcPath) {
+                if (!text.startsWith('.text.' + this.srcname) && text != srcPath) {
                     lineMap.delete(text);
                 }
             }
