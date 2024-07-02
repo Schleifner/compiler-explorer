@@ -1,6 +1,7 @@
+import fs from 'fs';
+import path from 'path';
+
 import {ElfParser, LineInfoItem} from './readers/elf-parser';
-import * as path from 'path';
-import * as fs from 'fs';
 
 export class ElfParserTool {
     public declare _elf_examplepathc: string;
@@ -13,20 +14,20 @@ export class ElfParserTool {
     constructor(filepath: string, libraryCode: boolean) {
         this.elfParser = new ElfParser();
         if (!path.isAbsolute(filepath)) {
-            filepath = __dirname + '\\' + filepath;
+            filepath = path.resolve(filepath);
         }
         this.elfParser.bindFile(filepath);
         const basename = filepath.substring(0, filepath.search(/((\.c|\.cpp|\.cxx)\.o)$/g));
         this.srcname = basename.substring(basename.lastIndexOf('\\') + 1);
         this._elf_examplepathc = basename + '.c';
         this._elf_examplepathcpp = basename + '.cpp';
-        fs.access(this._elf_examplepathc, fs.constants.F_OK, (err) => {
+        fs.access(this._elf_examplepathc, fs.constants.F_OK, err => {
             if (err) {
                 this.srcPath = this._elf_examplepathc;
             } else {
                 this.srcPath = this._elf_examplepathcpp;
             }
-        })
+        });
         this.libraryCode = libraryCode;
     }
 
@@ -42,7 +43,7 @@ export class ElfParserTool {
         const relaMap = this.elfParser.getRelaMap();
         if (!this.libraryCode) {
             for (const text of lineMap.keys()) {
-                if (!text.startsWith('.text.' + this.srcname) && text != srcPath) {
+                if (!text.startsWith('.text.' + this.srcname) && text !== srcPath) {
                     lineMap.delete(text);
                 }
             }

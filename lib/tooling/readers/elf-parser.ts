@@ -1,8 +1,9 @@
 import * as fs from 'fs';
 
+import {assert} from '../../assert';
+
 import {DwarfLineReader, LineInfoItem} from './dwarf-line-reader';
 import {ElfReader} from './elf-reader';
-import { readFileAsync } from '@sentry/node/types/integrations/context';
 
 export {LineInfoItem} from './dwarf-line-reader';
 
@@ -54,7 +55,7 @@ export class ElfParser {
             const debug_lines = this.elfReader.getDbgLineSecsOf(group);
             const texts = this.elfReader.getTextSecsOf(group);
             if (texts.length === 0 || debug_lines.length === 0) {
-                continue ;
+                continue;
             }
             for (const sec of texts) {
                 const text = this.elfReader.readSecName(sec);
@@ -63,7 +64,9 @@ export class ElfParser {
                 for (const content of contents) {
                     this.lineReader.readEntries(content);
                     for (const item of this.lineReader.lineInfo()) {
-                        if (!filter(item)) { continue ; }
+                        if (!filter(item)) {
+                            continue;
+                        }
                         const addr_start = BigInt.asUintN(32, item.address_start).toString(16);
                         const addr_end = BigInt.asUintN(32, item.address_start).toString(16);
                         record.set(pad(addr_start), item.line);
@@ -71,7 +74,8 @@ export class ElfParser {
                         if (!lineMap.has(item.filepath)) {
                             lineMap.set(item.filepath, new Map<string, number>());
                         }
-                        const map = lineMap.get(item.filepath)!;
+                        const map = lineMap.get(item.filepath);
+                        assert<boolean>(map !== undefined && map !== null);
                         map.set(pad(addr_start), item.line);
                         map.set(pad(addr_end), item.line);
                     }

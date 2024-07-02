@@ -8,7 +8,6 @@ import {ParseFiltersAndOutputOptions} from '../../types/features/filters.interfa
 import {PropertyGetter} from '../properties.interfaces';
 import {ElfParserTool} from '../tooling/tasking-elfparse-tool';
 import * as utils from '../utils';
-import * as path from 'path';
 
 import {AsmParser} from './asm-parser';
 import {IAsmParser} from './asm-parser.interfaces';
