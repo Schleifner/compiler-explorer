@@ -17,17 +17,15 @@ export class ElfParserTool {
             filepath = path.resolve(filepath);
         }
         this.elfParser.bindFile(filepath);
-        const basename = filepath.substring(0, filepath.search(/((\.c|\.cpp|\.cxx)\.o)$/g));
+        const basename = filepath.substring(0, filepath.search(/((\.c|\.cpp|\.cxx|)\.o)$/g));
         this.srcname = path.basename(basename);
         this._elf_examplepathc = basename + '.c';
         this._elf_examplepathcpp = basename + '.cpp';
-        fs.access(this._elf_examplepathc, fs.constants.F_OK, err => {
-            if (err) {
-                this.srcPath = this._elf_examplepathc;
-            } else {
-                this.srcPath = this._elf_examplepathcpp;
-            }
-        });
+        if(fs.existsSync(this._elf_examplepathc)) {
+            this.srcPath = this._elf_examplepathc;
+        } else {
+            this.srcPath = this._elf_examplepathcpp;
+        }
         this.libraryCode = libraryCode;
     }
 
