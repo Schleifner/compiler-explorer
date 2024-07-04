@@ -11,7 +11,7 @@ export interface FileItem {
     file_length: uLeb128;
 }
 
-interface LineNumProgHeader {
+export interface LineNumProgHeader {
     unit_len: uWord;
     version: uHalf;
     header_len: uWord;
@@ -53,7 +53,7 @@ export interface LineInfoItem {
     address_start: bigint;
     address_end: bigint;
     inc_dir: string;
-    filepath: string;
+    srcpath: string;
     line: number;
     column: number;
 }
@@ -177,15 +177,18 @@ export class DwarfLineReader {
         this.registers.descreminator = 0;
     }
 
-    protected composeLineItem(addr_adv: bigint, line_inc: number) {
+    protected composeLineItem() {
+        if (this.lineItemList.length > 0) {
+            const item = this.lineItemList[this.lineItemList.length - 1];
+            item.address_end = BigInt.asUintN(32, this.registers.address);
+        }
         const file_item = this.header.file_names[this.registers.file - 1];
-        const inc_dir =
-            this.header.include_dirs.length > 0 ? this.header.include_dirs[Number(file_item.inc_dir_index)] : '';
+        const inc_dir = file_item.inc_dir_index ? this.header.include_dirs[Number(file_item.inc_dir_index)] : '';
         const item: LineInfoItem = {
-            address_start: this.registers.address,
-            address_end: this.registers.address + addr_adv,
-            line: this.registers.line + line_inc,
-            filepath: file_item.filename,
+            address_start: BigInt.asUintN(32, this.registers.address),
+            address_end: 0n,
+            line: this.registers.line,
+            srcpath: file_item.filename,
             inc_dir: inc_dir,
             column: this.registers.column,
         };
@@ -195,7 +198,7 @@ export class DwarfLineReader {
     protected execExtOperation(inst_len: uByte, opcode: uByte) {
         switch (opcode) {
             case DW_LNE.DW_LNE_end_sequence: {
-                this.composeLineItem(0n, 0);
+                this.composeLineItem();
                 this.registers.end_sequence = true;
                 this.resetRegisters();
                 return 0;
@@ -225,7 +228,7 @@ export class DwarfLineReader {
         // const operand_count = this.header.std_op_lens[opcode - 1];
         switch (opcode) {
             case DW_LNS.DW_LNS_copy: {
-                this.composeLineItem(0n, 0);
+                this.composeLineItem();
                 this.registers.basic_block = false;
                 this.registers.prologue_end = false;
                 this.registers.epilogue_begin = false;
@@ -288,13 +291,14 @@ export class DwarfLineReader {
         const addr_advance = Math.floor(adjust_opcode / this.header.line_range) * this.header.min_inst_len;
         const line_increment = this.header.line_base + (adjust_opcode % this.header.line_range);
 
-        this.composeLineItem(BigInt(addr_advance), line_increment);
-
         this.registers.line += line_increment;
         this.registers.address += BigInt(addr_advance);
         this.registers.basic_block = false;
         this.registers.prologue_end = false;
         this.registers.epilogue_begin = false;
+
+        this.composeLineItem();
+
         return 1;
     }
 
@@ -320,6 +324,11 @@ export class DwarfLineReader {
             }
         }
     }
+    public resetAll() {
+        this.resetRegisters();
+        this.clearItems();
+        this.entries = [];
+    }
 
     public clearItems() {
         this.lineItemList = [];
@@ -331,5 +340,24 @@ export class DwarfLineReader {
 
     public fileInfo() {
         return this.header.file_names;
+    }
+
+    public getHeader() {
+        const header: LineNumProgHeader = {
+            unit_len: this.header.unit_len,
+            version: this.header.version,
+            header_len: this.header.header_len,
+            min_inst_len: this.header.min_inst_len,
+            dft_is_stmt: this.header.dft_is_stmt,
+            line_base: this.header.line_base,
+            line_range: this.header.line_range,
+            opcode_base: this.header.opcode_base,
+            std_op_lens: this.header.std_op_lens,
+            include_dirs: this.header.include_dirs,
+            file_names: this.header.file_names,
+            op_begin: this.header.op_begin,
+            op_length: this.header.op_length,
+        };
+        return header;
     }
 }

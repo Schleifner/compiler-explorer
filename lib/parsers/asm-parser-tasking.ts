@@ -45,6 +45,9 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
         let address = '';
 
         const elfParseTool = new ElfParserTool(this._elffilepath, filters.libraryCode);
+        if (this.testcpppath) {
+            elfParseTool.setSrcPath(this.testcpppath);
+        }
         const elf = elfParseTool.start();
 
         for (let line of asmLines) {
@@ -156,7 +159,7 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
 
         const elfParseTool = new ElfParserTool(this._elffilepath, true);
         if (this.testcpppath) {
-            elfParseTool._elf_examplepathcpp = this.testcpppath;
+            elfParseTool.setSrcPath(this.testcpppath);
         }
         const elf = elfParseTool.start();
         let src = elfParseTool._elf_examplepathcpp;

@@ -94,7 +94,7 @@ enum SH_NDX {
     SHN_HIRESERVE = 0xffff,
 }
 
-interface SecHeader {
+export interface SecHeader {
     sh_name: Elf32_Word;
     sh_type: Elf32_Word;
     sh_flags: Elf32_Word;
@@ -107,7 +107,7 @@ interface SecHeader {
     sh_entsize: Elf32_Word;
 }
 
-enum SH_TYPE {
+export enum SH_TYPE {
     SHT_NULL = 0,
     SHT_PROGBITS = 1,
     SHT_SYMTAB = 2,
@@ -132,14 +132,14 @@ enum SH_TYPE {
     SHT_HIUSER = 0xffffffff,
 }
 
-enum SH_FLAGS {
+export enum SH_FLAGS {
     SHF_WRITE = 0x1,
     SHF_ALLOC = 0x2,
     SHF_EXECINSTR = 0x4,
     SHF_MASKPROC = 0xf0000000,
 }
 
-interface SymEntry {
+export interface SymEntry {
     st_name: Elf32_Word;
     st_value: Elf32_Addr;
     st_size: Elf32_Word;
@@ -147,16 +147,6 @@ interface SymEntry {
     st_other: Elf32_Byte;
     st_shndx: Elf32_Half;
 }
-
-const elf32_st_bind = (i: Elf32_Byte) => {
-    return i >> 4;
-};
-const elf32_st_type = (i: Elf32_Byte) => {
-    return i & 0xf;
-};
-const elf32_st_info = (b: Elf32_Byte, t: Elf32_Byte) => {
-    return (b << 4) | (t & 0xf);
-};
 
 enum ST_BIND {
     STB_LOCAL = 0,
@@ -181,15 +171,6 @@ interface RelaEntry {
     r_info: Elf32_Word;
     r_addend: Elf32_Sword;
 }
-const elf32_r_sym = (i: Elf32_Byte) => {
-    return i >> 8;
-};
-const elf32_r_type = (i: Elf32_Byte) => {
-    return i & 0xff;
-};
-const elf32_r_info = (b: Elf32_Byte, t: Elf32_Byte) => {
-    return (b << 8) | (t & 0xff);
-};
 
 interface GroupEntry {
     g_comdat: uHalf;
@@ -207,7 +188,6 @@ export class ElfReader {
     protected declare sh_str_table: Addr;
     protected declare str_table: Addr;
     protected sym_table: SymEntry[] = [];
-    protected rel_tables: RelaEntry[] = [];
     protected rel_maps: Record<string, RelaEntry[]> = {};
     protected group_entries: GroupEntry[] = [];
 
@@ -276,7 +256,7 @@ export class ElfReader {
                     continue;
                 }
                 case SH_TYPE.SHT_SYMTAB: {
-                    this.readSymTable(sec_header);
+                    this.saveSymbols(sec_header);
                     break;
                 }
                 case SH_TYPE.SHT_STRTAB: {
@@ -388,7 +368,6 @@ export class ElfReader {
             r_info: this.reader.readWord(),
             r_addend: this.reader.readSWord(),
         };
-        this.rel_tables.push(rela_entry);
         return rela_entry;
     }
     protected readRelEntry() {
@@ -397,15 +376,15 @@ export class ElfReader {
             r_info: this.reader.readWord(),
             r_addend: 0,
         };
-        this.rel_tables.push(rel_entry);
         return rel_entry;
     }
-    protected readSymTable(sym_table: SecHeader) {
+    protected saveSymbols(sym_table: SecHeader) {
         const start = Number(sym_table.sh_offset);
         const steps = sym_table.sh_entsize;
         for (let i = 0; i < sym_table.sh_size; i += steps) {
             this.reader.seek(start + i);
-            this.readSymEntry();
+            const sym_entry = this.readSymEntry();
+            this.sym_table.push(sym_entry);
         }
     }
     protected readSymEntry() {
@@ -417,7 +396,7 @@ export class ElfReader {
             st_other: this.reader.readByte(),
             st_shndx: this.reader.readHalf(),
         };
-        this.sym_table.push(sym_entry);
+        return sym_entry;
     }
     protected setSecNameTable() {
         const sh_str_table = this.sh_table[this.header.e_shstrndx];
@@ -425,6 +404,9 @@ export class ElfReader {
     }
     protected setStrTable(str_table: SecHeader) {
         this.str_table = str_table.sh_offset;
+    }
+    public secHeader(shndx: uWord) {
+        return this.sh_table[shndx];
     }
     public readSecName(sec_header: SecHeader) {
         this.reader.seek(Number(this.sh_str_table) + sec_header.sh_name);
@@ -435,7 +417,7 @@ export class ElfReader {
         return this.reader.readString();
     }
     public readRelTargetName(rel_entry: RelaEntry) {
-        const sym_ndx = elf32_r_sym(rel_entry.r_info);
+        const sym_ndx = this.elf32_r_sym(rel_entry.r_info);
         const sym_entry = this.sym_table[sym_ndx];
         return this.readSymName(sym_entry);
     }
@@ -480,7 +462,83 @@ export class ElfReader {
     public getRelaocations() {
         return this.rel_maps;
     }
+    public readRelaEnties(rela: SecHeader) {
+        const target = rela.sh_info;
+        const symtab = rela.sh_link;
+        const entries: RelaEntry[] = [];
+        const start = Number(rela.sh_offset);
+        const steps = rela.sh_entsize;
+        this.reader.seek(start);
+        let readMethord: () => RelaEntry;
+        if (rela.sh_type === SH_TYPE.SHT_REL) {
+            readMethord = this.readRelEntry;
+        } else if (rela.sh_type === SH_TYPE.SHT_RELA) {
+            readMethord = this.readRelaEntry;
+        } else {
+            return {target: target, symtab: symtab, entries};
+        }
+        for (let i = 0; i < rela.sh_size; i += steps) {
+            entries.push(readMethord());
+        }
+        return {target: target, symtab: symtab, entries: entries};
+    }
+    public readSymEntries(symtab: SecHeader) {
+        const symbols: SymEntry[] = [];
+        const start = Number(symtab.sh_offset);
+        const steps = symtab.sh_entsize;
+        for (let i = 0; i < symtab.sh_size; i += steps) {
+            this.reader.seek(start + i);
+            const sym_entry = this.readSymEntry();
+            symbols.push(sym_entry);
+        }
+        return symbols;
+    }
+    public getRelaSymbols(secs: SecHeader[]) {
+        const relas = this.findSecsBy((sec: SecHeader) => {
+            return sec.sh_type === SH_TYPE.SHT_REL || sec.sh_type === SH_TYPE.SHT_RELA;
+        });
+        const sec_with_rela_symbols: {sec: SecHeader; symbols: SymEntry[]}[] = [];
+        for (const sec of secs) {
+            const relas_of_sec = relas.filter((sec: SecHeader) => {
+                const target = this.secHeader(sec.sh_info);
+                return target.sh_offset === sec.sh_offset;
+            });
+            const symbols: SymEntry[] = [];
+            for (const rela of relas_of_sec) {
+                const record = this.readRelaEnties(rela);
+                const st_header = this.secHeader(record.symtab);
+                const symtab = this.readSymEntries(st_header);
+                for (const entry of record.entries) {
+                    const symbol = symtab[this.elf32_r_sym(entry.r_info)];
+                    symbols.push(symbol);
+                }
+            }
+            sec_with_rela_symbols.push({sec: sec, symbols: symbols});
+        }
+        return sec_with_rela_symbols;
+    }
+
     public getGroups() {
         return this.group_entries;
+    }
+
+    public elf32_st_bind(i: Elf32_Byte) {
+        return i >> 4;
+    }
+    public elf32_st_type(i: Elf32_Byte) {
+        return i & 0xf;
+    }
+    public elf32_st_info(b: Elf32_Byte, t: Elf32_Byte) {
+        return (b << 4) | (t & 0xf);
+    }
+
+    public elf32_r_sym(i: Elf32_Byte) {
+        return i >> 8;
+    }
+    public elf32_r_type(i: Elf32_Byte) {
+        return i & 0xff;
+    }
+    public elf32_r_info(b: Elf32_Byte, t: Elf32_Byte) {
+        return (b << 8) | (t & 0xff);
     }
 }

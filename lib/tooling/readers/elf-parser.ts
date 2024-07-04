@@ -2,10 +2,27 @@ import * as fs from 'fs';
 
 import {assert} from '../../assert';
 
-import {DwarfLineReader, LineInfoItem} from './dwarf-line-reader';
-import {ElfReader} from './elf-reader';
+import {LineInfoItem as _LineInfoItem, DwarfLineReader} from './dwarf-line-reader';
+import {ElfReader, SecHeader} from './elf-reader';
 
-export {LineInfoItem} from './dwarf-line-reader';
+export interface LineInfoItem extends _LineInfoItem {
+    objpath: string;
+    secname: string;
+}
+
+function extendItemFrom(_base: _LineInfoItem, objpath: string, sec_name: string) {
+    const item: LineInfoItem = {
+        address_start: _base.address_start,
+        address_end: _base.address_end,
+        inc_dir: _base.inc_dir,
+        srcpath: _base.srcpath,
+        line: _base.line,
+        column: _base.column,
+        objpath: objpath,
+        secname: sec_name,
+    };
+    return item;
+}
 
 function pad(num_str: string) {
     const s = '00000000' + num_str;
@@ -48,9 +65,29 @@ export class ElfParser {
         return relaMap;
     }
 
-    getLineMap(filter: (item: LineInfoItem) => boolean) {
-        const lineMap = new Map<string, Map<string, number>>();
-        const groups = this.elfReader.getGroups();
+    protected processIntegrated(filter: (item: LineInfoItem) => boolean) {
+        const lineInfoItems: LineInfoItem[] = [];
+        const debug_lines = this.elfReader.findSecsBy((sec: SecHeader) => {
+            return this.elfReader.readSecName(sec).startsWith('.debug_line');
+        });
+        this.lineReader.resetAll();
+        for (const dbg of debug_lines) {
+            const content = this.elfReader.getContentsOf([dbg])[0];
+            this.lineReader.readEntries(content);
+            const linInfos = this.lineReader.lineInfo();
+            for (const l of linInfos) {
+                const lineInfo = extendItemFrom(l, this.elfPath, '');
+                if (filter(lineInfo)) {
+                    lineInfoItems.push(lineInfo);
+                }
+            }
+        }
+        return lineInfoItems;
+    }
+
+    protected processGrouped(groups: any[], filter: (item: LineInfoItem) => boolean) {
+        this.lineReader.resetAll();
+        const lineInfoItems: LineInfoItem[] = [];
         for (const group of groups) {
             const debug_lines = this.elfReader.getDbgLineSecsOf(group);
             const texts = this.elfReader.getTextSecsOf(group);
@@ -58,30 +95,52 @@ export class ElfParser {
                 continue;
             }
             for (const sec of texts) {
-                const text = this.elfReader.readSecName(sec);
-                const record = new Map<string, number>();
+                const sec_name = this.elfReader.readSecName(sec);
                 const contents = this.elfReader.getContentsOf(debug_lines);
                 for (const content of contents) {
                     this.lineReader.readEntries(content);
-                    for (const item of this.lineReader.lineInfo()) {
-                        if (!filter(item)) {
-                            continue;
-                        }
-                        const addr_start = BigInt.asUintN(32, item.address_start).toString(16);
-                        const addr_end = BigInt.asUintN(32, item.address_start).toString(16);
-                        record.set(pad(addr_start), item.line);
-                        record.set(pad(addr_end), item.line);
-                        if (!lineMap.has(item.filepath)) {
-                            lineMap.set(item.filepath, new Map<string, number>());
-                        }
-                        const map = lineMap.get(item.filepath);
-                        assert<boolean>(map !== undefined && map !== null);
-                        map.set(pad(addr_start), item.line);
-                        map.set(pad(addr_end), item.line);
-                    }
-                    this.lineReader.clearItems();
                 }
-                lineMap.set(text, record);
+                for (const l of this.lineReader.lineInfo()) {
+                    const lineInfo = extendItemFrom(l, this.elfPath, sec_name);
+                    if (filter(lineInfo)) {
+                        lineInfoItems.push(lineInfo);
+                    }
+                }
+                this.lineReader.clearItems();
+            }
+        }
+        return lineInfoItems;
+    }
+
+    getLineInfoItems(filter: (item: LineInfoItem) => boolean) {
+        const groups = this.elfReader.getGroups();
+        if (groups.length === 0) {
+            return this.processIntegrated(filter);
+        } else {
+            return this.processGrouped(groups, filter);
+        }
+    }
+
+    getLineMap(filter: (item: LineInfoItem) => boolean) {
+        const lineMap = new Map<string, Map<string, number>>();
+        const linInfoItems = this.getLineInfoItems(filter);
+        for (const lineInfo of linInfoItems) {
+            if (!lineMap.has(lineInfo.srcpath)) {
+                lineMap.set(lineInfo.srcpath, new Map<string, number>());
+            }
+            if (!lineMap.has(lineInfo.secname)) {
+                lineMap.set(lineInfo.secname, new Map<string, number>());
+            }
+            const src_map = lineMap.get(lineInfo.srcpath);
+            const sec_map = lineMap.get(lineInfo.secname);
+            assert(src_map !== undefined && src_map !== null);
+            assert(sec_map !== undefined && sec_map !== null);
+            const start = lineInfo.address_start;
+            const end = lineInfo.address_end;
+            for (let addr = start; addr < end; addr++) {
+                const formated = pad(addr.toString(16));
+                src_map.set(formated, lineInfo.line);
+                sec_map.set(formated, lineInfo.line);
             }
         }
         return lineMap;

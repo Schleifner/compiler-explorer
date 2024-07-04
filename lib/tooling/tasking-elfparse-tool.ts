@@ -36,7 +36,7 @@ export class ElfParserTool {
     start() {
         const srcPath = this.srcPath;
         const lineMap = this.elfParser.getLineMap((item: LineInfoItem) => {
-            return item.filepath === srcPath;
+            return item.srcpath === srcPath;
         });
         const relaMap = this.elfParser.getRelaMap();
         if (!this.libraryCode) {
