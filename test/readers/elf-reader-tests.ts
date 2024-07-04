@@ -1,5 +1,6 @@
-import {fileURLToPath} from 'url';
 import fs from 'fs';
+import {fileURLToPath} from 'url';
+
 import {assert} from '../../lib/assert';
 import {ElfReader, SecHeader, SH_TYPE} from '../../lib/tooling/readers/elf-reader';
 

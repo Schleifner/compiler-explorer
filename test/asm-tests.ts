@@ -25,13 +25,9 @@
 import * as fs from 'fs';
 import {fileURLToPath} from 'url';
 
-import {uniqueId} from 'underscore';
-import {add} from 'winston';
-
 import {assert} from '../lib/assert';
 import {AsmParser} from '../lib/parsers/asm-parser';
 import {AsmParserTasking} from '../lib/parsers/asm-parser-tasking';
-import {VcAsmParser} from '../lib/parsers/asm-parser-vc';
 import {AsmRegex} from '../lib/parsers/asmregex';
 import {ElfParser} from '../lib/tooling/readers/elf-parser';
 import {ElfReader} from '../lib/tooling/readers/elf-reader';
@@ -39,21 +35,23 @@ import {ElfParserTool} from '../lib/tooling/tasking-elfparse-tool';
 
 import {makeFakeParseFiltersAndOutputOptions} from './utils';
 
-describe('ASM CL parser', () => {
-    it('should work for error documents', () => {
-        const parser = new VcAsmParser();
-        const result = parser.process('<Compilation failed>', {
-            directives: true,
-        });
+// since VS asm parser has been removed, tests for it would be removed or commented.
 
-        result.asm.should.deep.equal([
-            {
-                source: null,
-                text: '<Compilation failed>',
-            },
-        ]);
-    });
-});
+// describe('ASM CL parser', () => {
+//     it('should work for error documents', () => {
+//         const parser = new VcAsmParser();
+//         const result = parser.process('<Compilation failed>', {
+//             directives: true,
+//         });
+
+//         result.asm.should.deep.equal([
+//             {
+//                 source: null,
+//                 text: '<Compilation failed>',
+//             },
+//         ]);
+//     });
+// });
 
 describe('ASM regex base class', () => {
     it('should leave unfiltered lines alone', () => {

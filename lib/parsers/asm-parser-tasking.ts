@@ -171,11 +171,10 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
         }
         const map = elf.lineMap.get(src);
 
-        let minaddress = '00000000';
-        let maxaddress = 'ffffffff';
+        let minaddress = 'ffffffff';
+        let maxaddress = '00000000';
 
         if (map) {
-            minaddress = '99999999';
             for (const key of map.keys()) {
                 if (key < minaddress && key !== '00000000') {
                     minaddress = key;

@@ -176,7 +176,6 @@ export class DwarfLineReader {
         this.registers.isa = 0;
         this.registers.descreminator = 0;
     }
-
     protected composeLineItem() {
         if (this.lineItemList.length > 0) {
             const item = this.lineItemList[this.lineItemList.length - 1];
@@ -298,7 +297,6 @@ export class DwarfLineReader {
         this.registers.epilogue_begin = false;
 
         this.composeLineItem();
-
         return 1;
     }
 
