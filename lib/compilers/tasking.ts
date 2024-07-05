@@ -4,7 +4,7 @@ import {fileURLToPath} from 'url';
 import _ from 'underscore';
 
 import {CompilationResult, ExecutionOptions} from '../../types/compilation/compilation.interfaces';
-import {ParseFiltersAndOutputOptions} from '../../types/features/filters.interfaces';
+import {CompilerOutputOptions, ParseFiltersAndOutputOptions} from '../../types/features/filters.interfaces';
 import {BaseCompiler} from '../base-compiler';
 import {TaskingHlObjdumper} from '../objdumper';
 import {AsmParserTasking} from '../parsers/asm-parser-tasking';
@@ -39,14 +39,24 @@ export class TaskingCompiler extends BaseCompiler {
         return options;
     }
 
-    override async runCompiler(
-        compiler: string,
-        options: string[],
-        inputFilename: string,
-        execOptions: ExecutionOptions,
-    ): Promise<CompilationResult> {
-        this.srcpath = inputFilename;
-        return super.runCompiler(compiler, options, inputFilename, execOptions);
+    override async doCompilation(inputFilename: any, dirPath: any, key: any, 
+        options: any, filters: any, backendOptions: any, 
+        libraries: any, tools: any): Promise<any> {
+        filters.binary = false;
+        const inputFilenameSafe = this.filename(inputFilename);
+        const outputFilename = this.getOutputFilename(dirPath, this.outputFilebase, key);
+        options = _.compact(
+            this.prepareArguments(options, filters, backendOptions, inputFilename, outputFilename, libraries),
+        );
+        this.srcpath = inputFilenameSafe;
+
+        const execOptions = this.getDefaultExecOptions();
+        execOptions.ldPath = this.getSharedLibraryPathsAsLdLibraryPaths([]);
+        const [output] = await Promise.all([
+            this.runCompiler(this.compiler.exe, options, inputFilenameSafe, execOptions),
+        ]);
+        filters.binary = true;
+        return this.checkOutputFileAndDoPostProcess(output, outputFilename, filters);
     }
 
     override async postProcess(result, outputFilename: string, filters: ParseFiltersAndOutputOptions) {
@@ -57,6 +67,6 @@ export class TaskingCompiler extends BaseCompiler {
     override async processAsm(result: any, filters: any, options: any) {
         this.asm.objpath = this.objpath;
         this.asm.setSrcPath(this.srcpath);
-        return this.asm.process(result, filters);
+        return this.asm.process(result.asm, filters);
     }
 }
