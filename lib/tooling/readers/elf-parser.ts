@@ -4,6 +4,7 @@ import {assert} from '../../assert';
 
 import {LineInfoItem as _LineInfoItem, DwarfLineReader} from './dwarf-line-reader';
 import {ElfReader, SecHeader} from './elf-reader';
+import {Addr, uWord} from './elf-types';
 
 export interface LineInfoItem extends _LineInfoItem {
     objpath: string;
@@ -30,10 +31,10 @@ function pad(num_str: string) {
 }
 
 export class ElfParser {
-    protected declare elfPath: string;
-    protected declare elfContent: Uint8Array;
-    protected declare elfReader: ElfReader;
-    protected declare lineReader: DwarfLineReader;
+    protected elfPath: string;
+    protected elfContent: Uint8Array;
+    protected elfReader: ElfReader;
+    protected lineReader: DwarfLineReader;
 
     bindFile(filepath: string) {
         this.elfPath = filepath;
@@ -42,6 +43,10 @@ export class ElfParser {
         const file_content = fs.readFileSync(filepath);
         this.elfReader.readElf(file_content);
         this.elfContent = file_content;
+    }
+
+    getSecName(sec: SecHeader) {
+        return this.elfReader.readSecName(sec);
     }
 
     getSrcPaths() {
@@ -63,6 +68,21 @@ export class ElfParser {
             relaMap.set(key, record);
         }
         return relaMap;
+    }
+
+    getSecHeaders(filter: (sec: SecHeader) => boolean) {
+        return this.elfReader.getSecHeaders(filter);
+    }
+
+    getRangesOf(secs: SecHeader[]) {
+        const ranges: {begin: Addr; end: Addr}[] = [];
+        for (const sec of secs) {
+            ranges.push({
+                begin: sec.sh_addr,
+                end: sec.sh_addr + BigInt(sec.sh_size),
+            });
+        }
+        return ranges;
     }
 
     protected processIntegrated(filter: (item: LineInfoItem) => boolean) {

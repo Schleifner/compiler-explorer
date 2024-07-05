@@ -182,11 +182,11 @@ const ELFMAG: string = String.fromCodePoint(0x7f) + 'ELF';
 
 export class ElfReader {
     protected reader: BytesReader = new BytesReader();
-    protected declare _file_content: Uint8Array;
-    protected declare header: ElfHeader;
-    protected declare sh_table: SecHeader[];
-    protected declare sh_str_table: Addr;
-    protected declare str_table: Addr;
+    protected _file_content: Uint8Array;
+    protected header: ElfHeader;
+    protected sh_table: SecHeader[];
+    protected sh_str_table: Addr;
+    protected str_table: Addr;
     protected sym_table: SymEntry[] = [];
     protected rel_maps: Record<string, RelaEntry[]> = {};
     protected group_entries: GroupEntry[] = [];
@@ -207,9 +207,9 @@ export class ElfReader {
             e_type: this.reader.readHalf(),
             e_machine: this.reader.readHalf(),
             e_version: this.reader.readWord(),
-            e_entry: BigInt(this.reader.readWord()),
-            e_phoff: BigInt(this.reader.readWord()),
-            e_shoff: BigInt(this.reader.readWord()),
+            e_entry: BigInt.asUintN(32, BigInt(this.reader.readWord())),
+            e_phoff: BigInt.asUintN(32, BigInt(this.reader.readWord())),
+            e_shoff: BigInt.asUintN(32, BigInt(this.reader.readWord())),
             e_flags: this.reader.readWord(),
             e_ehsize: this.reader.readHalf(),
             e_phentsize: this.reader.readHalf(),
@@ -236,8 +236,8 @@ export class ElfReader {
             sh_name: this.reader.readWord(),
             sh_type: this.reader.readWord(),
             sh_flags: this.reader.readWord(),
-            sh_addr: BigInt(this.reader.readWord()),
-            sh_offset: BigInt(this.reader.readWord()),
+            sh_addr: BigInt.asUintN(32, BigInt(this.reader.readWord())),
+            sh_offset: BigInt.asUintN(32, BigInt(this.reader.readWord())),
             sh_size: this.reader.readWord(),
             sh_link: this.reader.readWord(),
             sh_info: this.reader.readWord(),
@@ -364,7 +364,7 @@ export class ElfReader {
     }
     protected readRelaEntry() {
         const rela_entry: RelaEntry = {
-            r_offset: BigInt(this.reader.readWord()),
+            r_offset: BigInt.asUintN(32, BigInt(this.reader.readWord())),
             r_info: this.reader.readWord(),
             r_addend: this.reader.readSWord(),
         };
@@ -372,7 +372,7 @@ export class ElfReader {
     }
     protected readRelEntry() {
         const rel_entry: RelaEntry = {
-            r_offset: BigInt(this.reader.readWord()),
+            r_offset: BigInt.asUintN(32, BigInt(this.reader.readWord())),
             r_info: this.reader.readWord(),
             r_addend: 0,
         };
@@ -390,7 +390,7 @@ export class ElfReader {
     protected readSymEntry() {
         const sym_entry: SymEntry = {
             st_name: this.reader.readWord(),
-            st_value: BigInt(this.reader.readWord()),
+            st_value: BigInt.asUintN(32, BigInt(this.reader.readWord())),
             st_size: this.reader.readWord(),
             st_info: this.reader.readByte(),
             st_other: this.reader.readByte(),
@@ -516,6 +516,9 @@ export class ElfReader {
             sec_with_rela_symbols.push({sec: sec, symbols: symbols});
         }
         return sec_with_rela_symbols;
+    }
+    getSecHeaders(filter: (sec: SecHeader) => boolean) {
+        return this.sh_table.filter(filter);
     }
 
     public getGroups() {

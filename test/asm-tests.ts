@@ -172,14 +172,11 @@ describe('Elf parse tooling', () => {
     let tool: ElfParserTool;
     let parser: ElfParser;
     let elf_reader: ElfReader;
-    let line_reader;
     let elfInfo;
-    const ELFMAG: string = String.fromCodePoint(0x7f) + 'ELF';
     const file = fileURLToPath(new URL('tasking\\cpp_demo.cpp.o', import.meta.url));
 
     before(() => {
-        tool = new ElfParserTool(file, false);
-        tool.setSrcPath('cpp_demo.cpp');
+        tool = new ElfParserTool(file, 'cpp_demo.cpp', false, false);
         parser = new ElfParser();
         elf_reader = new ElfReader();
         parser.bindFile(file);
@@ -247,8 +244,8 @@ describe('Asm Parser tooling-tasking', () => {
     };
     before(() => {
         parser = new AsmParserTasking();
-        parser._elffilepath = file;
-        parser.testcpppath = 'C:\\Users\\QXZ3F7O\\Documents\\work\\compiler-explorer\\test\\tasking\\cpp_demo.cpp';
+        parser.objpath = file;
+        parser.srcpath = 'C:\\Users\\QXZ3F7O\\Documents\\work\\compiler-explorer\\test\\tasking\\cpp_demo.cpp';
     });
 
     it('output.s-text and address)', () => {
@@ -329,14 +326,8 @@ describe('Function buttons', () => {
     let parser;
     const file = fileURLToPath(new URL('tasking\\example.o', import.meta.url));
     const elfparser = new AsmParserTasking();
-    elfparser._elffilepath = file;
-    elfparser.testcpppath = 'C:\\Users\\QXZ3F7O\\Documents\\work\\compiler-explorer\\test\\tasking\\example.cpp';
-    before(() => {
-        parser = new ElfParserTool(file, false);
-        parser.start();
-        // parser._elf_section[2451].sh_end = parser._elf_section[2451].sh_offset + parser._elf_section[2451].sh_size - 1;
-        // parser.parse_debugLine(2451, '');
-    });
+    elfparser.objpath = file;
+    elfparser.srcpath = 'C:\\Users\\QXZ3F7O\\Documents\\work\\compiler-explorer\\test\\tasking\\example.cpp';
 
     const filters = {
         binaryObject: false,
@@ -651,8 +642,8 @@ describe('Asm Parser tooling-tasking', () => {
     };
     before(() => {
         parser = new AsmParserTasking();
-        parser._elffilepath = file;
-        parser.testcpppath = 'C:\\Users\\QXZ3F7O\\Documents\\work\\compiler-explorer\\test\\tasking\\cpp_demo.cpp';
+        parser.objpath = file;
+        parser.srcpath = 'C:\\Users\\QXZ3F7O\\Documents\\work\\compiler-explorer\\test\\tasking\\cpp_demo.cpp';
     });
 
     it('output.s-text and address)', () => {
@@ -733,8 +724,8 @@ describe('Function buttons', () => {
     let parser;
     const file = fileURLToPath(new URL('tasking\\example.o', import.meta.url));
     const elfparser = new AsmParserTasking();
-    elfparser._elffilepath = file;
-    elfparser.testcpppath = 'C:\\Users\\QXZ3F7O\\Documents\\work\\compiler-explorer\\test\\tasking\\example.cpp';
+    elfparser.objpath = file;
+    elfparser.srcpath = 'C:\\Users\\QXZ3F7O\\Documents\\work\\compiler-explorer\\test\\tasking\\example.cpp';
 
     const filters = {
         binaryObject: false,

@@ -1,8 +1,8 @@
 import {assert} from 'console';
 
 export class BytesReader {
-    protected declare buffer: Uint8Array;
-    protected declare pointer: number;
+    protected buffer: Uint8Array;
+    protected pointer: number;
     protected _readed_size = 0;
 
     bind(array: Uint8Array, seek = 0) {

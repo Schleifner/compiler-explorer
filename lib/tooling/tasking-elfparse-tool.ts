@@ -1,32 +1,22 @@
-import fs from 'fs';
-import path from 'path';
+import {assert} from '../assert';
 
 import {ElfParser, LineInfoItem} from './readers/elf-parser';
+import {SecHeader} from './readers/elf-reader';
+import {Addr} from './readers/elf-types';
 
 export class ElfParserTool {
-    public declare _elf_examplepathc: string;
-    public declare _elf_examplepathcpp: string;
-    protected declare elfParser: ElfParser;
-    protected declare libraryCode: boolean;
-    protected declare srcPath: string;
-    protected declare srcname: string;
+    protected elfParser: ElfParser;
+    protected libCode: boolean;
+    protected srcPath: string;
+    protected linked: boolean;
+    protected srcname: string;
 
-    constructor(filepath: string, libraryCode: boolean) {
+    constructor(objpath: string, srcpath: string, linked: boolean, libCode: boolean) {
         this.elfParser = new ElfParser();
-        if (!path.isAbsolute(filepath)) {
-            filepath = path.resolve(filepath);
-        }
-        this.elfParser.bindFile(filepath);
-        const basename = filepath.substring(0, filepath.search(/((\.c|\.cpp|\.cxx|)\.o)$/g));
-        this.srcname = path.basename(basename);
-        this._elf_examplepathc = basename + '.c';
-        this._elf_examplepathcpp = basename + '.cpp';
-        if (fs.existsSync(this._elf_examplepathc)) {
-            this.srcPath = this._elf_examplepathc;
-        } else {
-            this.srcPath = this._elf_examplepathcpp;
-        }
-        this.libraryCode = libraryCode;
+        this.elfParser.bindFile(objpath);
+        this.setSrcPath(srcpath);
+        this.linked = linked;
+        this.libCode = libCode;
     }
 
     setSrcPath(path: string) {
@@ -35,22 +25,46 @@ export class ElfParserTool {
 
     start() {
         const srcPath = this.srcPath;
-        const lineMap = this.elfParser.getLineMap((item: LineInfoItem) => {
-            return item.srcpath === srcPath;
-        });
-        const relaMap = this.elfParser.getRelaMap();
-        if (!this.libraryCode) {
-            for (const text of lineMap.keys()) {
-                if (!text.startsWith('.text.' + this.srcname) && text !== srcPath) {
-                    lineMap.delete(text);
+        const basename = srcPath.substring(srcPath.lastIndexOf('\\') + 1, srcPath.length);
+        this.srcname = basename.substring(0, basename.search(/(\.c|\.cpp|\.cxx|)$/g));
+        const ranges: {begin: Addr; end: Addr}[] = [];
+        if (this.linked) {
+            const texts = this.elfParser.getSecHeaders((sec: SecHeader) => {
+                return this.elfParser.getSecName(sec).startsWith('.text.' + this.srcname);
+            });
+            ranges.push(...this.elfParser.getRangesOf(texts));
+        }
+        const maps = this.elfParser.getLineMap((item: LineInfoItem) => {
+            if (item.srcpath !== srcPath) {
+                return false;
+            }
+            if (ranges.length === 0) {
+                return true;
+            }
+            for (const range of ranges) {
+                if (
+                    range.begin <= item.address_start &&
+                    item.address_start <= item.address_end &&
+                    item.address_end <= range.end
+                ) {
+                    return true;
                 }
+            }
+            return false;
+        });
+        const lineMap = new Map<string, Map<string, number>>();
+        for (const text of maps.keys()) {
+            if (text.startsWith('.text.' + this.srcname) || text === srcPath) {
+                const map = maps.get(text);
+                assert(map !== undefined && map !== null);
+                lineMap.set(text, map);
             }
         }
         return {
             lineMap: lineMap,
             lineSet: new Set<string>(lineMap.keys()),
-            relaMap: relaMap,
-            srcPath: this._elf_examplepathcpp,
+            relaMap: this.elfParser.getRelaMap(),
+            srcPath: srcPath,
         };
     }
 }

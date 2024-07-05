@@ -75,7 +75,7 @@ interface LineRegisters {
 }
 
 export class DwarfLineReader {
-    protected declare header: LineNumProgHeader;
+    protected header: LineNumProgHeader;
     protected registers: LineRegisters = {
         address: 0n,
         file: 1,
@@ -204,7 +204,7 @@ export class DwarfLineReader {
             }
             case DW_LNE.DW_LNE_set_address: {
                 const operand = inst_len === 4 ? this.reader.readWord() : this.reader.readWord(); // readLong
-                this.registers.address = BigInt(operand);
+                this.registers.address = BigInt.asUintN(32, BigInt(operand));
                 return inst_len;
             }
             case DW_LNE.DW_LNE_define_file: {
@@ -236,7 +236,7 @@ export class DwarfLineReader {
             }
             case DW_LNS.DW_LNS_advance_pc: {
                 const adv_pc = this.reader.readULeb128();
-                const __num = BigInt(this.header.min_inst_len);
+                const __num = BigInt.asUintN(32, BigInt(this.header.min_inst_len));
                 this.registers.address += adv_pc * __num;
                 return 1 + this.reader.readed_size();
             }
@@ -266,7 +266,7 @@ export class DwarfLineReader {
             }
             case DW_LNS.DW_LNS_fix_advance_pc: {
                 const operand = this.reader.readHalf();
-                this.registers.address += BigInt(operand);
+                this.registers.address += BigInt.asUintN(32, BigInt(operand));
                 return 1 + 2;
             }
             case DW_LNS.DW_LNS_set_prologue_end: {
@@ -291,7 +291,7 @@ export class DwarfLineReader {
         const line_increment = this.header.line_base + (adjust_opcode % this.header.line_range);
 
         this.registers.line += line_increment;
-        this.registers.address += BigInt(addr_advance);
+        this.registers.address += BigInt.asUintN(32, BigInt(addr_advance));
         this.registers.basic_block = false;
         this.registers.prologue_end = false;
         this.registers.epilogue_begin = false;

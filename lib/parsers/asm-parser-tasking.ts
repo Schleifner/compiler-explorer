@@ -16,13 +16,17 @@ import {AsmRegex} from './asmregex';
 export class AsmParserTasking extends AsmParser implements IAsmParser {
     taskingText: RegExp;
     taskingMachineCode: RegExp;
-    _elffilepath: string;
-    testcpppath: string;
+    objpath: string;
+    srcpath: string;
 
     constructor(compilerProps?: PropertyGetter) {
         super(compilerProps);
         this.taskingText = /^\s+(.sect|.sdecl)\s+'(.*)'.*/;
         this.taskingMachineCode = /(^\w+)((?:\s*(?:\d|[a-f]){2}){2,4})\s+(.*:)?(\s*(.*)\s+(.*))/;
+    }
+
+    public setSrcPath(path: string) {
+        this.srcpath = path;
     }
 
     override processAsm(asmResult: string, filters: ParseFiltersAndOutputOptions): ParsedAsmResult {
@@ -44,10 +48,7 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
         let filetext = '';
         let address = '';
 
-        const elfParseTool = new ElfParserTool(this._elffilepath, filters.libraryCode);
-        if (this.testcpppath) {
-            elfParseTool.setSrcPath(this.testcpppath);
-        }
+        const elfParseTool = new ElfParserTool(this.objpath, this.srcpath, filters.binaryObject, filters.libraryCode);
         const elf = elfParseTool.start();
 
         for (let line of asmLines) {
@@ -157,19 +158,9 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
             if (!lastBlank) asm.push({text: '', source: null, labels: []});
         }
 
-        const elfParseTool = new ElfParserTool(this._elffilepath, true);
-        if (this.testcpppath) {
-            elfParseTool.setSrcPath(this.testcpppath);
-        }
+        const elfParseTool = new ElfParserTool(this.objpath, this.srcpath, filters.binaryObject, filters.libraryCode);
         const elf = elfParseTool.start();
-        let src = elfParseTool._elf_examplepathcpp;
-        if (!elf.lineMap.has(src)) {
-            src = elfParseTool._elf_examplepathc;
-        }
-        if (!elf.lineMap.has(src)) {
-            src = '';
-        }
-        const map = elf.lineMap.get(src);
+        const map = elf.lineMap.get(this.srcpath);
 
         let minaddress = 'ffffffff';
         let maxaddress = '00000000';

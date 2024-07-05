@@ -7,7 +7,7 @@ export type Addr = bigint;
 export type uLeb128 = bigint;
 export type ByteArray = Uint8Array;
 
-export function signedLeb128(value: bigint) {
+export function signedLeb128(value: uLeb128) {
     value = BigInt(value);
     const bits = value.toString(2).length;
     if (bits % 7 !== 0) {
