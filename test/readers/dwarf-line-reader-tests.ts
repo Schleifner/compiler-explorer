@@ -70,8 +70,73 @@ describe('test DwarfLineReader', () => {
             assert(val !== undefined && val !== null);
             return val;
         });
+        const opcodes: Array<number> = [
+            0,
+            5,
+            2,
+            1,
+            2,
+            3,
+            4, // extop<5>: SET_ADDRESS   0x04030201<uWord>
+        ].concat(
+            [0, 8, 3, 97, 98, 99, 0, 0, 0, 21], // extop<8> DEFINE_FILE  {name: "abc", dir_index: 0<uLeb128>, mod_time: 0<uLeb128>, length: 21<uLeb128>}
+            [
+                0,
+                2,
+                4,
+                5, // extop<2>: SET_DEISCRIMINATOR  5<uLeb128>
+            ],
+            [
+                4,
+                1, // stdop: SET_FILE    1<uLeb128> {'test-cpp.cpp'}
+            ],
+            [
+                5,
+                12, // stdop: SET_COLUMN     12<uLeb128>
+                1, // stdop: COPY
+            ],
+            [
+                2,
+                4, // stdop: ADVANCE_PC     4<uLeb128>
+                1, // stdop: COPY
+            ],
+            [
+                2,
+                4, // stdop: ADVANCE_PC       4<uLeb128>
+                3,
+                1, // stdop: ADVANCE_LINE     1<sLeb128>
+                1, // stdop: COPY
+            ],
+            [
+                4,
+                2, // stdop: SET_FILE    2<uLeb128> {'abc'}
+            ],
+            [
+                6, // stdop: NEG_STMT
+                7, //stdop: SET_BASIC_BLOCK
+            ],
+            [
+                8, // stdop: SPECIAL_255
+                1, // stdop: COPY
+            ],
+            [
+                9,
+                0,
+                1, // stdop: FIX_ADVANCE_PC   256 <uHalf>
+            ],
+            [
+                10, // stdop: SET_PROLOGUE_END
+                11, // stdop: SET_EPILOGUE_BEGIN
+                12, // stdop: SET_ISA
+            ],
+            [
+                0,
+                1,
+                1, // extop<1>: END_SEQUENCE
+            ],
+        );
         const entry = new Uint8Array(
-            [72, 0, 0, 0].concat(
+            [38 + opcodes.length, 0, 0, 0].concat(
                 // unit_len <32-bit>
                 [3, 0], // version <16-bit>
                 [32, 0, 0, 0], // head_len <32-bit>
@@ -81,19 +146,42 @@ describe('test DwarfLineReader', () => {
                 file_name,
                 [0], // filepath <strings with endle 0>
                 [0, 0, 0, 0], // file attributes <byte[4]>
-                [
-                    5, 56, 7, 0, 5, 2, 0, 0, 0, 0, 1, 5, 88, 1, 5, 21, 9, 6, 0, 3, 1, 1, 5, 1, 3, 1, 1, 7, 9, 6, 0, 0,
-                    1, 1,
-                ], // opcode <byte[?]>
+                // opcode <byte[?]>
+                opcodes,
             ),
         );
         lineReader.readEntries(entry);
         const lineInfoItems_expected: LineInfoItem[] = [
-            {address_start: 0x0n, address_end: 0x0n, line: 1, column: 56, inc_dir: '', srcpath: 'test-cpp.cpp'},
-            {address_start: 0x0n, address_end: 0x6n, line: 1, column: 88, inc_dir: '', srcpath: 'test-cpp.cpp'},
-            {address_start: 0x6n, address_end: 0x6n, line: 2, column: 21, inc_dir: '', srcpath: 'test-cpp.cpp'},
-            {address_start: 0x6n, address_end: 0xcn, line: 3, column: 1, inc_dir: '', srcpath: 'test-cpp.cpp'},
-            {address_start: 0xcn, address_end: 0x0n, line: 3, column: 1, inc_dir: '', srcpath: 'test-cpp.cpp'},
+            {
+                address_start: 0x04030201n,
+                address_end: 0x04030209n,
+                line: 1,
+                column: 12,
+                inc_dir: '',
+                srcpath: 'test-cpp.cpp',
+            },
+            {
+                address_start: 0x04030209n,
+                address_end: 0x04030211n,
+                line: 1,
+                column: 12,
+                inc_dir: '',
+                srcpath: 'test-cpp.cpp',
+            },
+            {
+                address_start: 0x04030211n,
+                address_end: 0x04030247n,
+                line: 2,
+                column: 12,
+                inc_dir: '',
+                srcpath: 'test-cpp.cpp',
+            },
+            {address_start: 0x04030247n, address_end: 0x04030247n, line: 0, column: 12, inc_dir: '', srcpath: 'abc'},
+            {address_start: 0x04030247n, address_end: 0x04030347n, line: 0, column: 12, inc_dir: '', srcpath: 'abc'},
+            {address_start: 0x04030347n, address_end: 0x04030347n, line: -4, column: 12, inc_dir: '', srcpath: 'abc'},
+            {address_start: 0x04030347n, address_end: 0x04030347n, line: -7, column: 12, inc_dir: '', srcpath: 'abc'},
+            {address_start: 0x04030347n, address_end: 0x04030347n, line: -9, column: 12, inc_dir: '', srcpath: 'abc'},
+            {address_start: 0x04030347n, address_end: 0x00000000n, line: -9, column: 12, inc_dir: '', srcpath: 'abc'},
         ];
         const lineInfoItems_actual = lineReader.lineInfo();
         lineInfoItems_actual.length.should.equal(lineInfoItems_expected.length);
