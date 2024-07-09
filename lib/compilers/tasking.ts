@@ -23,7 +23,7 @@ export class TaskingCompiler extends BaseCompiler {
         outputFilename: string,
         userOptions?: string[] | undefined,
     ): string[] {
-        const options: string[] = ['-g', '--core=tc1.8'];
+        const options: string[] = ['-g', '--core=tc1.8', '-O0'];
         if (this.lang.id === 'c++') {
             options.push('--force-c++');
         }
