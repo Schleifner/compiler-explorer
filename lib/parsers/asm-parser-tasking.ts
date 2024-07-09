@@ -5,132 +5,218 @@ import {
     ParsedAsmResultLine,
 } from '../../types/asmresult/asmresult.interfaces';
 import {ParseFiltersAndOutputOptions} from '../../types/features/filters.interfaces';
+import {assert} from '../assert';
 import {PropertyGetter} from '../properties.interfaces';
 import {ElfParserTool} from '../tooling/tasking-elfparse-tool';
 import * as utils from '../utils';
 
 import {AsmParser} from './asm-parser';
 import {IAsmParser} from './asm-parser.interfaces';
-import {AsmRegex} from './asmregex';
+
+interface Isntruction {
+    addr: number;
+    mcode: string[];
+    operator: string;
+    operands: string[];
+    labels: string[];
+}
 
 export class AsmParserTasking extends AsmParser implements IAsmParser {
-    taskingText: RegExp;
-    taskingMachineCode: RegExp;
+    sdeclRe: RegExp;
+    sectRe: RegExp;
+    instRe: RegExp;
+    brInstRe: RegExp;
+    brAddrRe: RegExp;
+    filters: ParseFiltersAndOutputOptions;
     objpath: string;
     srcpath: string;
+    elfParseTool: ElfParserTool;
 
     constructor(compilerProps?: PropertyGetter) {
         super(compilerProps);
-        this.taskingText = /^\s+(.sect|.sdecl)\s+'(.*)'.*/;
-        this.taskingMachineCode = /(^\w+)((?:\s*(?:\d|[a-f]){2}){2,4})\s+(.*:)?(\s*(.*)\s+(.*))/;
+        this.sdeclRe = /^\s*\.sdecl\s*'\.text\.(\b[\w.]+\b)',\s*CODE\s+AT\s0x([\da-f]{0,8})\s*$/;
+        this.sectRe = /^\s*\.sect\s*'\.text\.\b[\w.]+\b'\s*$/;
+        this.instRe = /([\da-f]{8})\s+((?:\s*[\da-f]{2})+)\s+([a-z]+(?:\.[a-z]+)?)(?:\s+(.+))?\s*$/;
+        this.brInstRe = /^j.*$/;
+        this.brAddrRe = /^0x([\da-f]{0,8})$/;
     }
 
     public setSrcPath(path: string) {
         this.srcpath = path;
     }
 
+    parseWithoutLink(lines: string[]) {
+        const sec_insts = new Map<string, Isntruction[]>();
+        let sec_name = '__NONE_SECTION__';
+        let cur_insts: Isntruction[] = [];
+        for (const line of lines) {
+            let ma_res = line.match(this.sdeclRe);
+            if (ma_res) {
+                assert(ma_res !== undefined && ma_res !== null);
+                sec_name = ma_res[1];
+                cur_insts = [];
+                sec_insts.set(sec_name, cur_insts);
+                continue;
+            }
+            ma_res = line.match(this.instRe);
+            if (ma_res) {
+                assert(ma_res !== undefined && ma_res !== null);
+                const operands = ma_res[4] ? ma_res[4].split(',') : [];
+                const addr = BigInt.asUintN(32, BigInt('0x' + ma_res[1]));
+                cur_insts.push({
+                    addr: Number(addr),
+                    mcode: ma_res[2].split(' '),
+                    operator: ma_res[3],
+                    operands: operands,
+                    labels: [],
+                });
+            }
+        }
+        return sec_insts;
+    }
+
+    parseLinked(lines: string[]) {
+        let max_mcode_len = 0;
+        const links = new Map<number, string>();
+        const insts: Isntruction[] = [];
+        for (const line of lines) {
+            let ma_res = line.match(this.sdeclRe);
+            if (ma_res) {
+                assert(ma_res !== undefined && ma_res !== null);
+                const sec_name = ma_res[1];
+                const sec_addr = ma_res[2];
+                const addr = BigInt.asUintN(32, BigInt('0x' + sec_addr));
+                links.set(Number(addr), sec_name);
+            }
+            ma_res = line.match(this.instRe);
+            if (ma_res) {
+                assert(ma_res !== undefined && ma_res !== null);
+                const operands = ma_res[4].split(',');
+                max_mcode_len = ma_res[2].length > max_mcode_len ? ma_res[2].length : max_mcode_len;
+                const addr = BigInt.asUintN(32, BigInt('0x' + ma_res[1]));
+                insts.push({
+                    addr: Number(addr),
+                    mcode: ma_res[2].split(' '),
+                    operator: ma_res[3],
+                    operands: operands,
+                    labels: [],
+                });
+            }
+        }
+        this.processLink(links, insts);
+
+        return [links, insts];
+    }
+
+    processLink(link: Map<number, string>, insts: Isntruction[]) {
+        const labels = new Map<number, string>();
+        for (const inst of insts) {
+            const ma_res = inst.operator.match(this.brInstRe);
+            if (ma_res) {
+                for (const [i, op] of inst.operands.entries()) {
+                    const _ma_res = op.match(this.brAddrRe);
+                    if (_ma_res === null) {
+                        continue;
+                    }
+                    const addr = Number(BigInt.asUintN(32, BigInt('0x' + _ma_res[1])));
+                    const target = link.get(addr);
+                    if (target) {
+                        inst.operands[i] = `<${target}>`;
+                        inst.labels.push(inst.operands[i]);
+                    } else {
+                        const sec_addr = this.findAddrNest(link, addr);
+                        const target = link.get(sec_addr);
+                        assert(target !== undefined && target !== null);
+                        inst.operands[i] = `<${target}+${addr - sec_addr}>`;
+                        inst.labels.push(inst.operands[i]);
+                        labels.set(addr, `${target}+${addr - sec_addr}`);
+                    }
+                }
+            }
+        }
+        for (const [k, v] of labels.entries()) {
+            link.set(k, v);
+        }
+    }
+
+    findAddrNest(link: Map<number, string>, addr: number) {
+        const sec_addrs = [...link.keys()].sort();
+        let left = 0;
+        let right = sec_addrs.length;
+        let ptr = Math.floor((left + right) / 2);
+        while (left < right) {
+            if (sec_addrs[ptr] < addr) {
+                left = ptr + 1;
+            } else if (sec_addrs[ptr] > addr) {
+                right = ptr - 1;
+            } else {
+                break;
+            }
+            ptr = Math.floor((left + right) / 2);
+        }
+        return sec_addrs[ptr];
+    }
+
+    filterNoSource(toFilter: string[]) {
+        if (this.filters.libraryCode) {
+            return toFilter;
+        }
+        const filtered: string[] = [];
+
+        return filtered;
+    }
+
+    composeAsmText(inst: Isntruction) {
+        let text = '';
+        if (!this.filters.directives) {
+            text += this.elfParseTool.toAddrStr(inst.addr) + ' ';
+            const mcode = inst.mcode.join(' ');
+            text += mcode + ' '.repeat(20).substring(mcode.length, 20);
+        }
+        text += inst.operator;
+        if (inst.operands.length > 0) {
+            text += ' '.repeat(10 - inst.operator.length) + inst.operands.join(',');
+        }
+        return text;
+    }
+
     override processAsm(asmResult: string, filters: ParseFiltersAndOutputOptions): ParsedAsmResult {
+        this.filters = filters;
         if (filters.binaryObject) return this.processBinaryAsm(asmResult, filters);
         const startTime = process.hrtime.bigint();
+        this.elfParseTool = new ElfParserTool(this.objpath, this.srcpath, filters.binaryObject, filters.libraryCode);
+        const elf = this.elfParseTool.start();
         const asm: ParsedAsmResultLine[] = [];
         const labelDefinitions: Record<string, number> = {};
 
         const asmLines = utils.splitLines(asmResult);
         const startingLineCount = asmLines.length;
 
-        let source: AsmResultSource | undefined | null;
-
-        function maybeAddBlank() {
-            const lastBlank = asm.length === 0 || asm[asm.length - 1].text === '';
-            if (!lastBlank) asm.push({text: '', source: null, labels: []});
-        }
-
-        let filetext = '';
-        let address = '';
-
-        const elfParseTool = new ElfParserTool(this.objpath, this.srcpath, filters.binaryObject, filters.libraryCode);
-        const elf = elfParseTool.start();
-
-        for (let line of asmLines) {
-            if (line.trim() === '') {
-                maybeAddBlank();
+        const sec_insts = this.parseWithoutLink(asmLines);
+        const srcname = this.elfParseTool.getSrcname();
+        for (const sec of sec_insts.keys()) {
+            if (!sec.startsWith(this.elfParseTool.getSrcname())) {
                 continue;
             }
-
-            const match = null;
-            line = utils.expandTabs(line);
-
-            const matchtext = line.match(this.taskingText);
-            if (matchtext) {
-                if (matchtext[1] === '.sect') {
-                    filetext = matchtext[2];
-                    if (elf.lineSet.has(filetext) || filters.libraryCode) {
-                        asm.push({
-                            text: filetext,
-                        });
-                    }
-                }
-                continue;
-            }
-
-            const matchaddr = line.match(this.taskingMachineCode);
-            if (matchaddr) {
-                address = matchaddr[1];
-                if (matchaddr[5].includes('call') || matchaddr[5].trim() === 'j') {
-                    if (matchaddr[1] === '00000000') {
-                        const map = elf.relaMap.get(filetext);
-                        if (map) {
-                            const value = map.get(0);
-                            if (value) {
-                                matchaddr[4] = ' ' + matchaddr[5] + value;
-                            }
-                        }
-                    } else {
-                        const key = parseInt(matchaddr[6]);
-                        const map = elf.relaMap.get(filetext);
-                        if (map) {
-                            const value = map.get(key);
-                            if (value) {
-                                matchaddr[4] = ' ' + matchaddr[5] + value;
-                            }
-                        }
-                    }
-                }
-                if (filters.directives) {
-                    line = '  ' + matchaddr[4].trim();
-                }
-            }
-
-            const text = AsmRegex.filterAsmLine(line, filters);
-
-            const labelsInLine = match ? [] : this.getUsedLabelsInLine(text);
-
-            const map = elf.lineMap.get(filetext);
-            if (map) {
-                const _linenumber: number | undefined = map.get(address);
-                if (_linenumber) {
-                    source = {
-                        column: 1,
-                        file: null,
-                        line: _linenumber,
-                    };
-                }
-            }
-
-            if (elf.lineSet.has(filetext) || filters.libraryCode) {
-                if (elf.lineSet.has(filetext)) {
-                    asm.push({
-                        text: text,
-                        source: source,
-                        labels: labelsInLine,
-                    });
-                } else {
-                    asm.push({
-                        text: text,
-                        source: null,
-                        labels: labelsInLine,
-                    });
-                }
+            const src_map = elf.lineMap.get('.text.' + sec);
+            const insts = sec_insts.get(sec);
+            assert(src_map !== undefined && src_map !== null);
+            assert(insts !== undefined && insts !== null);
+            asm.push({text: sec.substring(srcname.length + 1) + ':'});
+            for (const inst of insts) {
+                const addr = this.elfParseTool.toAddrStr(inst.addr);
+                const line = src_map.get(addr);
+                assert(line !== undefined && line !== null);
+                const src: AsmResultSource = {
+                    file: null,
+                    line: line,
+                };
+                asm.push({
+                    text: this.composeAsmText(inst),
+                    // opcodes: inst.mcode,
+                    // address: inst.addr,
+                    source: src,
+                });
             }
         }
 
@@ -145,99 +231,45 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
 
     override processBinaryAsm(asmResult: string, filters: ParseFiltersAndOutputOptions): ParsedAsmResult {
         const startTime = process.hrtime.bigint();
+        this.elfParseTool = new ElfParserTool(this.objpath, this.srcpath, filters.binaryObject, filters.libraryCode);
+        const elf = this.elfParseTool.start();
         const asm: ParsedAsmResultLine[] = [];
         const labelDefinitions: Record<string, number> = {};
 
         const asmLines = utils.splitLines(asmResult);
         const startingLineCount = asmLines.length;
 
-        let source: AsmResultSource | undefined | null;
-
-        function maybeAddBlank() {
-            const lastBlank = asm.length === 0 || asm[asm.length - 1].text === '';
-            if (!lastBlank) asm.push({text: '', source: null, labels: []});
-        }
-
-        const elfParseTool = new ElfParserTool(this.objpath, this.srcpath, filters.binaryObject, filters.libraryCode);
-        const elf = elfParseTool.start();
-        const map = elf.lineMap.get(this.srcpath);
-
-        let minaddress = 'ffffffff';
-        let maxaddress = '00000000';
-
-        if (map) {
-            for (const key of map.keys()) {
-                if (key < minaddress && key !== '00000000') {
-                    minaddress = key;
-                }
-                if (key > maxaddress) {
-                    maxaddress = key;
-                }
-            }
-        }
-
-        let completeTag1 = false;
-        let completeTag2 = false;
-
-        for (let line of asmLines) {
-            let address = '';
-            if (line.trim() === '') {
-                maybeAddBlank();
+        const sec_insts = this.parseWithoutLink(asmLines);
+        const src_map = elf.lineMap.get(this.srcpath);
+        assert(src_map !== undefined && src_map !== null);
+        const srcname = this.elfParseTool.getSrcname();
+        for (const sec of sec_insts.keys()) {
+            if (!sec.startsWith(srcname)) {
                 continue;
             }
-
-            const match = null;
-            line = utils.expandTabs(line);
-
-            const matchaddr = line.match(this.taskingMachineCode);
-            if (matchaddr) {
-                completeTag1 = true;
-                address = matchaddr[1];
-                if (filters.directives) {
-                    line = '  ' + matchaddr[4].trim();
-                }
-            } else {
-                completeTag1 = false;
-                completeTag2 = false;
-            }
-
-            const text = AsmRegex.filterAsmLine(line, filters);
-
-            const labelsInLine = match ? [] : this.getUsedLabelsInLine(text);
-
-            if (address >= minaddress && address <= maxaddress) {
-                if (map) {
-                    completeTag2 = true;
-                    const _linenumber: number | undefined = map.get(address);
-                    if (_linenumber) {
-                        source = {
-                            column: 1,
-                            file: null,
-                            line: _linenumber,
-                        };
-                    }
-                    asm.push({
-                        text: text,
-                        source: source,
-                        labels: labelsInLine,
-                    });
-                }
+            if (sec.substring(srcname.length + 1).startsWith('.')) {
                 continue;
-            } else {
-                if (filters.libraryCode) {
-                    asm.push({
-                        text: text,
-                        source: null,
-                        labels: labelsInLine,
-                    });
+            }
+            const insts = sec_insts.get(sec);
+            assert(insts !== undefined && insts !== null);
+            asm.push({text: sec.substring(srcname.length + 1) + ':'});
+            let last_line = -1;
+            for (const inst of insts) {
+                const addr = this.elfParseTool.toAddrStr(inst.addr);
+                const line = src_map.get(addr);
+                if (line) {
+                    last_line = line;
                 }
-                if (completeTag1 && completeTag2) {
-                    asm.push({
-                        text: text,
-                        source: source,
-                        labels: labelsInLine,
-                    });
-                }
+                const src: AsmResultSource = {
+                    file: null,
+                    line: last_line,
+                };
+                asm.push({
+                    text: this.composeAsmText(inst),
+                    // opcodes: inst.mcode,
+                    // address: inst.addr,
+                    source: src,
+                });
             }
         }
 
