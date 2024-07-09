@@ -3,7 +3,7 @@ import {fileURLToPath} from 'url';
 
 import _ from 'underscore';
 
-import {ParseFiltersAndOutputOptions} from '../../types/features/filters.interfaces';
+import {CompilerOutputOptions, ParseFiltersAndOutputOptions} from '../../types/features/filters.interfaces';
 import {BaseCompiler} from '../base-compiler';
 import {TaskingHlObjdumper} from '../objdumper';
 import {AsmParserTasking} from '../parsers/asm-parser-tasking';
@@ -36,6 +36,13 @@ export class TaskingCompiler extends BaseCompiler {
         }
         options.push('-o', outputFilename);
         return options;
+    }
+
+    override preProcess(source: string, filters: CompilerOutputOptions): string {
+        if (filters.binaryObject && !this.stubRe.test(source)) {
+            source += `\n${this.stubText}\n`;
+        }
+        return source;
     }
 
     override async doCompilation(
