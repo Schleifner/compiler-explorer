@@ -426,7 +426,7 @@ describe('Function buttons', () => {
         filters.libraryCode = true;
         filters.binaryObject = true;
         const output = elfparser.process(asm, filters);
-        output.asm[6].text.should.equal('8004e174 91 00 00 47         movh.a    a4,#0x7000');
+        output.asm[6].text.should.equal('8004e114 82 14               mov       d4,#0x1');
     });
 
     it('button filters.binary && directives', () => {

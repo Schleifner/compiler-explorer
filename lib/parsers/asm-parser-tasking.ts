@@ -157,15 +157,6 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
         return sec_addrs[ptr];
     }
 
-    filterNoSource(toFilter: string[]) {
-        if (this.filters.libraryCode) {
-            return toFilter;
-        }
-        const filtered: string[] = [];
-
-        return filtered;
-    }
-
     composeAsmText(inst: Isntruction) {
         let text = '';
         if (!this.filters.directives) {
@@ -178,6 +169,15 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
             text += ' '.repeat(10 - inst.operator.length) + inst.operands.join(',');
         }
         return text;
+    }
+
+    isSrcSection(sec: string) {
+        const srcname = this.elfParseTool.getSrcname();
+        return sec.startsWith(srcname) && !sec.substring(srcname.length + 1).startsWith('.');
+    }
+
+    stripHeader(sec: string) {
+        return sec.substring(sec.lastIndexOf('.') + 1);
     }
 
     override processAsm(asmResult: string, filters: ParseFiltersAndOutputOptions): ParsedAsmResult {
@@ -193,23 +193,24 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
         const startingLineCount = asmLines.length;
 
         const sec_insts = this.parseWithoutLink(asmLines);
-        const srcname = this.elfParseTool.getSrcname();
         for (const sec of sec_insts.keys()) {
-            if (!sec.startsWith(this.elfParseTool.getSrcname())) {
+            if (!filters.libraryCode && !this.isSrcSection(sec)) {
                 continue;
             }
             const src_map = elf.lineMap.get('.text.' + sec);
             const insts = sec_insts.get(sec);
-            assert(src_map !== undefined && src_map !== null);
             assert(insts !== undefined && insts !== null);
-            asm.push({text: sec.substring(srcname.length + 1) + ':'});
+            asm.push({text: this.stripHeader(sec) + ':'});
+            let last_line = -1;
             for (const inst of insts) {
                 const addr = this.elfParseTool.toAddrStr(inst.addr);
-                const line = src_map.get(addr);
-                assert(line !== undefined && line !== null);
+                const line = src_map ? src_map.get(addr) : -1;
+                if (line) {
+                    last_line = line;
+                }
                 const src: AsmResultSource = {
                     file: null,
-                    line: line,
+                    line: last_line,
                 };
                 asm.push({
                     text: this.composeAsmText(inst),
@@ -241,22 +242,17 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
 
         const sec_insts = this.parseWithoutLink(asmLines);
         const src_map = elf.lineMap.get(this.srcpath);
-        assert(src_map !== undefined && src_map !== null);
-        const srcname = this.elfParseTool.getSrcname();
         for (const sec of sec_insts.keys()) {
-            if (!sec.startsWith(srcname)) {
-                continue;
-            }
-            if (sec.substring(srcname.length + 1).startsWith('.')) {
+            if (!filters.libraryCode && !this.isSrcSection(sec)) {
                 continue;
             }
             const insts = sec_insts.get(sec);
             assert(insts !== undefined && insts !== null);
-            asm.push({text: sec.substring(srcname.length + 1) + ':'});
+            asm.push({text: this.stripHeader(sec) + ':'});
             let last_line = -1;
             for (const inst of insts) {
                 const addr = this.elfParseTool.toAddrStr(inst.addr);
-                const line = src_map.get(addr);
+                const line = src_map ? src_map.get(addr) : -1;
                 if (line) {
                     last_line = line;
                 }
