@@ -18,7 +18,7 @@ interface Isntruction {
     mcode: string[];
     operator: string;
     operands: string[];
-    labels: string[];
+    labels: AsmResultLabel[];
 }
 
 export class AsmParserTasking extends AsmParser implements IAsmParser {
@@ -27,6 +27,7 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
     instRe: RegExp;
     brInstRe: RegExp;
     brAddrRe: RegExp;
+    callInstRe: RegExp;
     filters: ParseFiltersAndOutputOptions;
     objpath: string;
     srcpath: string;
@@ -38,6 +39,7 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
         this.sectRe = /^\s*\.sect\s*'\.text\.\b[\w.]+\b'\s*$/;
         this.instRe = /([\da-f]{8})\s+((?:\s*[\da-f]{2})+)\s+([a-z]+(?:\.[a-z]+)?)(?:\s+(.+))?\s*$/;
         this.brInstRe = /^j.*$/;
+        this.callInstRe = /^.*call?$/;
         this.brAddrRe = /^0x([\da-f]{0,8})$/;
     }
 
@@ -45,8 +47,9 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
         this.srcpath = path;
     }
 
-    parseWithoutLink(lines: string[]) {
+    parseLines(lines: string[]) {
         const sec_insts = new Map<string, Isntruction[]>();
+        const links = new Map<number, string>();
         let sec_name = '__NONE_SECTION__';
         let cur_insts: Isntruction[] = [];
         for (const line of lines) {
@@ -56,6 +59,9 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
                 sec_name = ma_res[1];
                 cur_insts = [];
                 sec_insts.set(sec_name, cur_insts);
+                const sec_addr = ma_res[2];
+                const addr = BigInt.asUintN(32, BigInt('0x' + sec_addr));
+                links.set(addr === 0n ? links.size : Number(addr), sec_name);
                 continue;
             }
             ma_res = line.match(this.instRe);
@@ -72,46 +78,42 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
                 });
             }
         }
-        return sec_insts;
+        return {links: links, insts: sec_insts};
     }
 
-    parseLinked(lines: string[]) {
-        let max_mcode_len = 0;
-        const links = new Map<number, string>();
-        const insts: Isntruction[] = [];
-        for (const line of lines) {
-            let ma_res = line.match(this.sdeclRe);
-            if (ma_res) {
-                assert(ma_res !== undefined && ma_res !== null);
-                const sec_name = ma_res[1];
-                const sec_addr = ma_res[2];
-                const addr = BigInt.asUintN(32, BigInt('0x' + sec_addr));
-                links.set(Number(addr), sec_name);
-            }
-            ma_res = line.match(this.instRe);
-            if (ma_res) {
-                assert(ma_res !== undefined && ma_res !== null);
-                const operands = ma_res[4].split(',');
-                max_mcode_len = ma_res[2].length > max_mcode_len ? ma_res[2].length : max_mcode_len;
-                const addr = BigInt.asUintN(32, BigInt('0x' + ma_res[1]));
-                insts.push({
-                    addr: Number(addr),
-                    mcode: ma_res[2].split(' '),
-                    operator: ma_res[3],
-                    operands: operands,
-                    labels: [],
-                });
-            }
-        }
-        this.processLink(links, insts);
-
-        return [links, insts];
-    }
-
-    processLink(link: Map<number, string>, insts: Isntruction[]) {
+    processRelas(relas: Map<number, string>, insts: Isntruction[]) {
         const labels = new Map<number, string>();
         for (const inst of insts) {
-            const ma_res = inst.operator.match(this.brInstRe);
+            const ma_res = inst.operator.match(this.callInstRe);
+            if (ma_res) {
+                for (const [i, op] of inst.operands.entries()) {
+                    const _ma_res = op.match(this.brAddrRe);
+                    if (_ma_res === null) {
+                        continue;
+                    }
+                    const offset = inst.addr;
+                    const value = Number(BigInt.asUintN(32, BigInt('0x' + _ma_res[1])));
+                    const addend = value - offset;
+                    const _target = relas.get(offset);
+                    if (_target) {
+                        const ndx =
+                            _target.lastIndexOf('..') === -1 ? _target.lastIndexOf('.') : _target.lastIndexOf('..');
+                        const target = _target.substring(ndx + 1);
+                        inst.operands[i] = addend === 0 ? `${target}` : `${target}+${addend}`;
+                        inst.labels.push({
+                            name: inst.operands[i],
+                            range: {startCol: 1, endCol: target.length},
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    processLinks(link: Map<number, string>, insts: Isntruction[]) {
+        const labels = new Map<number, string>();
+        for (const inst of insts) {
+            const ma_res = inst.operator.match(this.callInstRe);
             if (ma_res) {
                 for (const [i, op] of inst.operands.entries()) {
                     const _ma_res = op.match(this.brAddrRe);
@@ -119,23 +121,19 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
                         continue;
                     }
                     const addr = Number(BigInt.asUintN(32, BigInt('0x' + _ma_res[1])));
-                    const target = link.get(addr);
-                    if (target) {
-                        inst.operands[i] = `<${target}>`;
-                        inst.labels.push(inst.operands[i]);
-                    } else {
-                        const sec_addr = this.findAddrNest(link, addr);
-                        const target = link.get(sec_addr);
-                        assert(target !== undefined && target !== null);
-                        inst.operands[i] = `<${target}+${addr - sec_addr}>`;
-                        inst.labels.push(inst.operands[i]);
-                        labels.set(addr, `${target}+${addr - sec_addr}`);
+                    const _target = link.get(addr);
+                    if (_target) {
+                        const ndx =
+                            _target.lastIndexOf('..') === -1 ? _target.lastIndexOf('.') : _target.lastIndexOf('..');
+                        const target = _target.substring(ndx + 1);
+                        inst.operands[i] = `${target}`;
+                        inst.labels.push({
+                            name: inst.operands[i],
+                            range: {startCol: 1, endCol: target.length},
+                        });
                     }
                 }
             }
-        }
-        for (const [k, v] of labels.entries()) {
-            link.set(k, v);
         }
     }
 
@@ -192,15 +190,26 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
         const asmLines = utils.splitLines(asmResult);
         const startingLineCount = asmLines.length;
 
-        const sec_insts = this.parseWithoutLink(asmLines);
+        const parseResult = this.parseLines(asmLines);
+        const links = parseResult.links;
+        const sec_insts = parseResult.insts;
         for (const sec of sec_insts.keys()) {
             if (!filters.libraryCode && !this.isSrcSection(sec)) {
                 continue;
             }
             const src_map = elf.lineMap.get('.text.' + sec);
+            const rel_map = elf.relaMap.get('.text.' + sec);
             const insts = sec_insts.get(sec);
             assert(insts !== undefined && insts !== null);
-            asm.push({text: this.stripHeader(sec) + ':'});
+            if (rel_map) {
+                this.processRelas(rel_map, insts);
+            }
+            asm.push({
+                text: this.stripHeader(sec) + ':',
+                source: null,
+                labels: [],
+            });
+            labelDefinitions[this.stripHeader(sec)] = asm.length;
             let last_line = -1;
             for (const inst of insts) {
                 const addr = this.elfParseTool.toAddrStr(inst.addr);
@@ -212,11 +221,17 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
                     file: null,
                     line: last_line,
                 };
+                const text = this.composeAsmText(inst);
+                if (inst.labels.length > 0) {
+                    inst.labels[0].range.startCol += text.lastIndexOf(' ') + 1;
+                    inst.labels[0].range.endCol += inst.labels[0].range.startCol;
+                }
                 asm.push({
-                    text: this.composeAsmText(inst),
+                    text: text,
                     // opcodes: inst.mcode,
                     // address: inst.addr,
                     source: src,
+                    labels: inst.labels,
                 });
             }
         }
@@ -240,7 +255,9 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
         const asmLines = utils.splitLines(asmResult);
         const startingLineCount = asmLines.length;
 
-        const sec_insts = this.parseWithoutLink(asmLines);
+        const parseResult = this.parseLines(asmLines);
+        const links = parseResult.links;
+        const sec_insts = parseResult.insts;
         const src_map = elf.lineMap.get(this.srcpath);
         for (const sec of sec_insts.keys()) {
             if (!filters.libraryCode && !this.isSrcSection(sec)) {
@@ -248,7 +265,13 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
             }
             const insts = sec_insts.get(sec);
             assert(insts !== undefined && insts !== null);
-            asm.push({text: this.stripHeader(sec) + ':'});
+            this.processLinks(links, insts);
+            asm.push({
+                text: this.stripHeader(sec) + ':',
+                source: null,
+                labels: [],
+            });
+            labelDefinitions[this.stripHeader(sec)] = asm.length;
             let last_line = -1;
             for (const inst of insts) {
                 const addr = this.elfParseTool.toAddrStr(inst.addr);
@@ -260,11 +283,17 @@ export class AsmParserTasking extends AsmParser implements IAsmParser {
                     file: null,
                     line: last_line,
                 };
+                const text = this.composeAsmText(inst);
+                if (inst.labels.length > 0) {
+                    inst.labels[0].range.startCol += text.lastIndexOf(' ') + 1;
+                    inst.labels[0].range.endCol += inst.labels[0].range.startCol;
+                }
                 asm.push({
-                    text: this.composeAsmText(inst),
+                    text: text,
                     // opcodes: inst.mcode,
                     // address: inst.addr,
                     source: src,
+                    labels: inst.labels,
                 });
             }
         }
