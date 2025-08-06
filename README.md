@@ -5,6 +5,33 @@
 
 # Compiler Explorer
 
+## Deployment
+
+**This repo currently only runs under node<=20** For users installed node newer than 20, nvm can help to manage multi
+node versions.
+
+This repo requires tricore-gcc and tasking ctc executable file under PATH. Before deploy this repo, check if the
+compilers are correctly installed
+
+```shell
+tricore-elf-gcc --version
+cctc --version
+```
+
+### Tricore compiler installation
+
+[Tricore gcc install guide here](https://github.com/Changqing-JING/TricoreBoot.git) Tasking compiler isn't open source,
+so please refer to your enterprise guide
+
+### Deploy the compiler explorer:
+
+```shell
+git clone https://github.com/Schleifner/compiler-explorer.git
+cd compiler-explorer
+npm ci
+npm run start
+```
+
 **Compiler Explorer** is an interactive compiler exploration website. Edit code in C, C++, C#, F#, Rust, Go, D, Haskell,
 Swift, Pascal, [ispc](https://ispc.github.io/), Python, Java or in any of the other
 [30+ supported languages](https://godbolt.org/api/languages), and see how that code looks after being compiled in real
